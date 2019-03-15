@@ -15,6 +15,12 @@ data LTy (nl : ℕ) : Set where
 LTEnv : ℕ → Set
 LTEnv nl = List (LTy nl)
 
+record Π {nl : ℕ} : Set where
+  constructor Π[_]_
+  field
+    snl : Subset nl
+    B   : ∀ {l} → l ∈ snl → LTy nl
+
 data _∈`_ {nl : ℕ} : LTy nl → LTEnv nl → Set where
   here  : ∀ {lt φ} → lt ∈` (lt ∷ φ)
   there : ∀ {lt lt' φ} → lt ∈` φ → lt ∈` (lt' ∷ φ)
@@ -25,11 +31,11 @@ data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
                             →  LExpr φ (Tlabel snl')
   Lab-I    : ∀ {l snl φ} → l ∈ snl → LExpr φ (Tlabel ⁅ l ⁆)
   Lab-E    : ∀ {snl φ B l} → LExpr φ (Tlabel snl)
-                         → l ∈ snl
-                         → LExpr (Tlabel (⁅ l ⁆) ∷ φ) B 
-                         → LExpr φ B
-  Pi-I     : ∀ {K B A φ} → LExpr φ K
-                         → LExpr (A ∷ φ) B
-                         → (ΠB : (LTy nl → LTy nl))       -- Not quite sure about this one
-                         → LExpr φ (ΠB A)
+                           → l ∈ snl
+                           → LExpr (Tlabel (⁅ l ⁆) ∷ φ) B 
+                           → LExpr φ B
+  Pi-I     : ∀ {K B A φ ΠB l} → LExpr φ K
+                              → LExpr (A ∷ φ) B
+                              → (x : (l ∈ Π.snl ΠB))
+                              → LExpr φ ((Π.B ΠB) x)
   -- to be continued
