@@ -28,4 +28,8 @@ data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
                          → l ∈ snl
                          → LExpr (Tlabel (⁅ l ⁆) ∷ φ) B 
                          → LExpr φ B
+  Pi-I     : ∀ {K B A φ} → LExpr φ K
+                         → LExpr (A ∷ φ) B
+                         → (ΠB : (LTy nl → LTy nl))       -- Not quite sure about this one
+                         → LExpr φ (ΠB A)
   -- to be continued
