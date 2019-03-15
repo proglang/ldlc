@@ -24,8 +24,8 @@ data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
   SubType  : ∀ {snl snl' φ} →  LExpr φ (Tlabel snl) → snl ⊆ snl'
                             →  LExpr φ (Tlabel snl')
   Lab-I    : ∀ {l snl φ} → l ∈ snl → LExpr φ (Tlabel ⁅ l ⁆)
-  Lab-E    : ∀ {snl φ B} → LExpr φ (Tlabel snl)
-                         → ∀ l → l ∈ snl
-                         → (Nₗ : B ∈` (Tlabel (⁅ l ⁆) ∷ φ))
-                         → LExpr φ B             
+  Lab-E    : ∀ {snl φ B l} → LExpr φ (Tlabel snl)
+                         → l ∈ snl
+                         → LExpr (Tlabel (⁅ l ⁆) ∷ φ) B 
+                         → LExpr φ B
   -- to be continued
