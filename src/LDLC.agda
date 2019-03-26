@@ -5,6 +5,7 @@ open import Data.List.All
 open import Data.Unit hiding (_≤_)
 open import Data.Nat hiding (_≤_)
 open import Data.Fin.Subset
+open import Data.Fin.Subset.Properties using (poset)
 open import Data.Fin hiding (_≤_)
 open import Data.Product
 
@@ -31,7 +32,17 @@ data _≤_ {nl} : LTy nl → LTy nl → Set where
   Slabel : ∀ {snl snl'} → snl ⊆ snl' → (Tlabel snl) ≤ (Tlabel snl')
   Sfun   : ∀ {A A' B B'} → A' ≤ A → B ≤ B' → (Tfun A B) ≤ (Tfun A' B')
 
--- ≤-trans : 
+-- Transitivity of ⊆
+⊆-trans : ∀ {nl} {snl snl' snl'' : Subset nl} → snl ⊆ snl' → snl' ⊆ snl'' → snl ⊆ snl''
+⊆-trans snl⊆snl' snl'⊆snl'' = λ x → snl'⊆snl'' (snl⊆snl' x)
+-- snl⊆snl'   = ∀ {x} → x ∈ snl → x ∈ snl'
+-- snl'⊆snl'' = ∀ {x} → x ∈ snl' → x ∈ snl''
+
+-- Transitivity of ≤ 
+≤-trans : ∀ {nl} {t t' t'' : LTy nl} → t ≤ t' → t' ≤ t'' → t ≤ t''
+≤-trans Sunit Sunit = Sunit 
+≤-trans (Slabel snl⊆snl') (Slabel snl'⊆snl'') = Slabel (⊆-trans snl⊆snl' snl'⊆snl'')
+≤-trans (Sfun a'≤a b≤b') (Sfun a''≤a' b'≤b'') = Sfun (≤-trans a''≤a' a'≤a) (≤-trans b≤b' b'≤b'')
 
 LTEnv : ℕ → Set
 LTEnv nl = List (LTy nl)
@@ -57,21 +68,28 @@ data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
                         → (ex : LExpr φ A)
                         → LExpr φ B
                  
--- Big step
+-- Big step semantics
 Val : ∀ {n} → LTy n → Set
 Val Tunit = Data.Unit.⊤
 Val {n} (Tlabel snl) = Σ (Fin n) (λ l → l ∈ snl)
 Val (Tfun ty ty₁) = (Val ty) → (Val ty₁)
 
 coerce : ∀ {nl} {t t' : LTy nl} → t ≤ t' → Val t → Val t'
-coerce Sunit v = {!!}
-coerce (Slabel x) v = {!!}
-coerce (Sfun t≤t' t≤t'') v = {!!}
+-- t is Val Unit
+coerce Sunit t = t
+-- Since snl⊆snl' = ∀ x → x ∈ snl → x ∈ snl'
+coerce (Slabel snl⊆snl') (Finnl , Finnl∈snl) = (Finnl , (snl⊆snl' Finnl∈snl))
+-- t, t' functions, induction on t then using inductive hypothesis and application of t'
+coerce (Sfun Sunit b≤b') unit→b = λ x → coerce b≤b' (unit→b x)
+coerce (Sfun (Slabel snl'⊆snl) b≤b') snl'→b = λ x → (coerce b≤b' (snl'→b (Σ.proj₁ x , snl'⊆snl (Σ.proj₂ x))))
+coerce (Sfun (Sfun a'≤a b≤b') b₁≤b'') [a'→b']→b₁ = λ x → (coerce b₁≤b'' ([a'→b']→b₁ (coerce (Sfun a'≤a b≤b') x)))
+-- λ (x : (A → B)) coerce b₁≤b'' ([a'→b']→b₁ (coerce (a→b ≤ a'→b') x))
+-- (a→b ≤ a'→b') <= Sfun a'≤a 
 
-eval : ∀ {n φ t} → LExpr{n} φ t → All Val φ → Val t
+eval : ∀ {n φ t} → LExpr {n} φ t → All Val φ → Val t
 eval e ϱ = {!!}
 
--- small step
+-- Small step semantics
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
   Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
   Vfun : ∀ {ty ty'} → Val' (Tfun ty ty') (SubType (Pi-I {!!}) {!!})
