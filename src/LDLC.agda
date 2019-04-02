@@ -92,7 +92,34 @@ eval (Abs e) ϱ = λ x → eval e (x ∷ ϱ)
 eval (App e e₁) ϱ = (eval e ϱ) (eval e₁ ϱ)
 
 -- Small step semantics
+
+-- To-Do: Reduction rules; eval
+--        Substitution needed?
+
+-- We force values to have type SubType, since Lab-I results in expressions with type of only one
+-- element of a label set and we want to keep the complete label set
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
   Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
-  Vfun : ∀ {ty ty'} → Val' (Tfun ty ty') (SubType (Abs {!!}) {!!})
+  Vfun : ∀ {ty ty' A B ty≤A B≤ty' exp}
+         → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
 
+data _~>_ {n φ t} : LExpr {n} φ t → LExpr {n} φ t → Set where
+  -- The following rules roughly correspond to the rules used in the PLFA (Progr. Language Foundations)
+  -- book, from the chapter about Lambda Calculus
+
+  ξ-App1 : ∀ {A} {L L' : (LExpr φ (Tfun A t))} {M} → L ~> L' → App L M ~> App L' M
+  
+  ξ-App2 : ∀ {M M' : LExpr φ t} {L} → M ~> M' → App L M ~> App L M'
+
+-- Requires substitution:
+--  β-App  : ∀ {} → Val' V → (App (Abs {A} {Φ} Expr) V) ~> Expr[V]
+
+
+-- Substitution
+_[_:=_] : ∀ {n φ t} → LExpr {n} φ t → (x : t ∈` φ) → LExpr φ t → LExpr φ t
+Var x₁ [ x := V ] = {!!}
+SubType expr x₁ [ x := V ] = {!!}
+Lab-I x₁ [ x := V ] = {!!}
+Lab-E expr x₁ [ x := V ] = {!!}
+Abs expr [ x := V ] = {!!}
+App expr expr₁ [ x := V ] = {!!} 
