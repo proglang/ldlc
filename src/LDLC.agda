@@ -112,6 +112,7 @@ ext ϱ (there x) = there (ϱ x)
 
 ---- Renaming: Correspondence between variables from two environments yields in a correspondence
 ----           between expressions in these environments
+---- E.g. λx. x ~ λy. y
 rename : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → A ∈` ψ)
                     → (∀ {A} → LExpr φ A → LExpr ψ A)
 rename ϱ (Var x)                 = Var (ϱ x)
@@ -130,24 +131,68 @@ exts : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → LExpr ψ A)
 exts ϱ here      = Var (here)
 exts ϱ (there x) = rename there (ϱ x)
 
+----- Simultaneous substitution -----
+subst : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → LExpr ψ A)
+                   → (∀ {A : LTy nl} → LExpr φ A → LExpr ψ A)
+subst ϱ (Var x)                    = ϱ x
+subst ϱ (SubType expr:A' A'≤A)     = SubType (subst ϱ expr:A') A'≤A
+subst {ψ} ϱ (Lab-I l∈snl)          = Lab-I {ψ} l∈snl
+subst ϱ (Lab-E expr:snl case)      = Lab-E (subst ϱ expr:snl)
+                                     λ l l∈snl → (subst (exts ϱ) (case l l∈snl))
+subst ϱ (Abs expr:B)               = Abs (subst (exts ϱ) expr:B)
+subst ϱ (App expr:A→B expr:A)     = App (subst ϱ expr:A→B) (subst ϱ expr:A)
 
+----- Single substitution, using simultaneous substitution
+----- Given an expression in environment (φ.B) with type A, we replace
+----- the variable of type B with an expression in environment φ by using
+----- the map ϱ which maps last variable in environment to the expr. of type B
+----- and every other free variable to itself for substitution
+_[[_]] : ∀ {nl φ} {A B : LTy nl} → LExpr (B ∷ φ) A → LExpr φ B → LExpr φ A
+_[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
+  where
+  ϱ : ∀ {A} → A ∈` (B ∷ φ) → LExpr φ A
+  ϱ here      = M
+  ϱ (there x) = Var x 
 
--- We force values to have type SubType, since Lab-I results in expressions with type {l},
--- we want to keep the subset l is in
+-- We force values to have type SubType, since Lab-I results in expressions with type {l}
+-- and we want to keep the information about which subset l is in
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
-  Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
+  -- Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
+  -- Changed x to snl, required for β-Lab-E ?
+  Vlab : ∀ {l snl l∈snl tl≤tout} → Val' (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
   Vfun : ∀ {ty ty' A B ty≤A B≤ty' exp}
          → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
 
-data _~>_ {n φ t} : LExpr {n} φ t → LExpr {n} φ t → Set where
-  -- The following rules roughly correspond to the rules used in the PLFA (Progr. Language Foundations)
-  -- book, from the chapter about Lambda Calculus
+data _~>_ {n φ A} : LExpr {n} φ A → LExpr {n} φ A → Set where
 
-  ξ-App1 : ∀ {A} {L L' : (LExpr φ (Tfun A t))} {M} → L ~> L' → App L M ~> App L' M
+  ξ-App1 : ∀ {B} {L L' : (LExpr φ (Tfun B A))} {M} → L ~> L'
+                                                   → App L M ~> App L' M
   
-  ξ-App2 : ∀ {M M' : LExpr φ t} {L} → M ~> M' → App L M ~> App L M'
+  ξ-App2 : ∀ {M M' : LExpr φ A} {L} → M ~> M'
+                                    → App L M ~> App L M'
 
--- Requires substitution:
---  β-App  : ∀ {} → Val' V → (App (Abs {A} {Φ} Expr) V) ~> Expr[V]
+  β-App : ∀ {A' B B' A'≤A B≤B' exp W}
+          -- → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
+          → Val' B W
+          → App ((SubType (Abs exp) (Sfun {n} {B'} {B} {A'} {A} B≤B' A'≤A))) W
+             ~>
+             SubType (exp [[ SubType W B≤B' ]]) A'≤A      
+{- non-subtyping version
+  β-App  : ∀ {B} {N : LExpr (B ∷ φ) A} {W : LExpr φ B}
+           → Val' B W   -- Vfun?
+           → App (Abs N) (W) ~> (N [[ W ]])
+-}
+  ξ-SubType : ∀ {A'≤A} {L L' : LExpr φ A} → L ~> L'
+                                          → SubType L A'≤A ~> SubType L' A'≤A
 
+  ξ-Lab-E : ∀ {snl} {L L' : LExpr φ (Tlabel snl)} {cases} → L ~> L'
+                                                          → Lab-E L cases ~> Lab-E L' cases
 
+  β-Lab-E : ∀ {l snl l∈snl tl≤tout} {cases}
+            → Val' {n} {φ} (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
+            → Lab-E (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout) cases
+               ~>
+               ((cases l l∈snl) [[ Lab-I{l = l}{snl} l∈snl ]])
+               -- Substitute topmost variable for l in expression of case
+
+-- Mutual recursive definition w/ accessing env. instead of substitution?
