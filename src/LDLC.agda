@@ -165,28 +165,34 @@ data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
 
 data _~>_ {n φ A} : LExpr {n} φ A → LExpr {n} φ A → Set where
 
-  ξ-App1 : ∀ {B} {L L' : (LExpr φ (Tfun B A))} {M} → L ~> L'
-                                                   → App L M ~> App L' M
+  ξ-App1 : ∀ {B} {L L' : (LExpr φ (Tfun B A))} {M}
+           → L ~> L'
+           → App L M ~> App L' M
   
-  ξ-App2 : ∀ {M M' : LExpr φ A} {L} → M ~> M'
-                                    → App L M ~> App L M'
+  ξ-App2 : ∀ {M M' : LExpr φ A} {L}
+           → M ~> M'
+           → App L M ~> App L M'
 
   β-App : ∀ {A' B B' A'≤A B≤B' exp W}
           -- → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
           → Val' B W
           → App ((SubType (Abs exp) (Sfun {n} {B'} {B} {A'} {A} B≤B' A'≤A))) W
              ~>
-             SubType (exp [[ SubType W B≤B' ]]) A'≤A      
-{- non-subtyping version
+             SubType (exp [[ SubType W B≤B' ]]) A'≤A
+             
+{- non-subtyping version of the above
   β-App  : ∀ {B} {N : LExpr (B ∷ φ) A} {W : LExpr φ B}
            → Val' B W   -- Vfun?
            → App (Abs N) (W) ~> (N [[ W ]])
 -}
-  ξ-SubType : ∀ {A'≤A} {L L' : LExpr φ A} → L ~> L'
-                                          → SubType L A'≤A ~> SubType L' A'≤A
 
-  ξ-Lab-E : ∀ {snl} {L L' : LExpr φ (Tlabel snl)} {cases} → L ~> L'
-                                                          → Lab-E L cases ~> Lab-E L' cases
+  ξ-SubType : ∀ {A'≤A} {L L' : LExpr φ A}
+              → L ~> L'
+              → SubType L A'≤A ~> SubType L' A'≤A
+
+  ξ-Lab-E : ∀ {snl} {L L' : LExpr φ (Tlabel snl)} {cases}
+            → L ~> L'
+            → Lab-E L cases ~> Lab-E L' cases
 
   β-Lab-E : ∀ {l snl l∈snl tl≤tout} {cases}
             → Val' {n} {φ} (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
