@@ -2,10 +2,10 @@ module LDLC where
 
 open import Data.List
 open import Data.List.All
-open import Data.Unit hiding (_≤_)
+open import Data.Unit hiding (_≤_ ; poset)
 open import Data.Nat hiding (_≤_)
 open import Data.Fin.Subset
-open import Data.Fin.Subset.Properties using (x∈⁅x⁆)
+open import Data.Fin.Subset.Properties
 open import Data.Fin hiding (_≤_)
 open import Data.Product
 
@@ -21,16 +21,26 @@ data _≤_ {nl} : LTy nl → LTy nl → Set where
   Slabel : ∀ {snl snl'} → snl ⊆ snl' → (Tlabel snl) ≤ (Tlabel snl')
   Sfun   : ∀ {A A' B B'} → A' ≤ A → B ≤ B' → (Tfun A B) ≤ (Tfun A' B')
 
------ Properties: Transitiviy of ⊆ (from Data.Fin.Subset) and subtyping relation
+----- Properties
+-- Transitivity, reflexivity of ⊆ (the one in Data.Fin.Subset.Properties ?)
 ⊆-trans : ∀ {nl} {snl snl' snl'' : Subset nl} → snl ⊆ snl' → snl' ⊆ snl'' → snl ⊆ snl''
 ⊆-trans snl⊆snl' snl'⊆snl'' = λ x → snl'⊆snl'' (snl⊆snl' x)
 -- snl⊆snl'   = ∀ {x} → x ∈ snl → x ∈ snl'
 -- snl'⊆snl'' = ∀ {x} → x ∈ snl' → x ∈ snl''
 
+⊆-refl : ∀ {nl} → (snl : Subset nl) → snl ⊆ snl
+⊆-refl snl = λ x → x
+
+-- Transitivity, reflexivity of ≤
 ≤-trans : ∀ {nl} {t t' t'' : LTy nl} → t ≤ t' → t' ≤ t'' → t ≤ t''
 ≤-trans Sunit Sunit = Sunit 
 ≤-trans (Slabel snl⊆snl') (Slabel snl'⊆snl'') = Slabel (⊆-trans snl⊆snl' snl'⊆snl'')
 ≤-trans (Sfun a'≤a b≤b') (Sfun a''≤a' b'≤b'') = Sfun (≤-trans a''≤a' a'≤a) (≤-trans b≤b' b'≤b'')
+
+≤-refl : ∀ {nl} → (t : LTy nl) → t ≤ t
+≤-refl Tunit = Sunit
+≤-refl (Tlabel x) = Slabel (⊆-refl x)
+≤-refl (Tfun t t') = Sfun (≤-refl t) (≤-refl t')
 -----
 
 -- Environment: List of types, each having a defined number of labels
@@ -45,12 +55,13 @@ data _∈`_ {nl : ℕ} : LTy nl → LTEnv nl → Set where
 -- Expressions: Variables, Subtypes, Label Introduction & Elimination, Abstraction,
 --              Application
 data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
+  Unit     : ∀ {φ} → LExpr φ Tunit
   Var      : ∀ {φ t} → (x : t ∈` φ) → LExpr φ t   -- t ∈` φ gives us the position of "x" in env
   SubType  : ∀ {A A' φ} →  LExpr φ A → A ≤ A'
                         →  LExpr φ A'
   Lab-I    : ∀ {l snl φ} → l ∈ snl → LExpr φ (Tlabel ⁅ l ⁆)
   Lab-E    : ∀ {snl φ B} → LExpr φ (Tlabel snl)
-                         → (∀ l → l ∈ snl → LExpr (Tlabel (⁅ l ⁆) ∷ φ) B) 
+                         → (∀ l → l ∈ snl → LExpr φ B) 
                          → LExpr φ B
   Abs     : ∀ {B A φ} → LExpr (A ∷ φ) B
                       → LExpr φ (Tfun A B)
@@ -72,10 +83,7 @@ coerce Sunit t = tt
 -- Since snl⊆snl' = ∀ x → x ∈ snl → x ∈ snl'
 coerce (Slabel snl⊆snl') (Finnl , Finnl∈snl) = (Finnl , (snl⊆snl' Finnl∈snl))
 -- t, t' functions, induction on t then using inductive hypothesis and application of t'
-coerce (Sfun Sunit b≤b') unit→b = λ x → coerce b≤b' (unit→b x)
-coerce (Sfun (Slabel snl'⊆snl) b≤b') snl'→b = λ x → (coerce b≤b' (snl'→b (Σ.proj₁ x , snl'⊆snl (Σ.proj₂ x))))
-coerce (Sfun (Sfun a'≤a b≤b') b₁≤b'') [a'→b']→b₁ = λ x → (coerce b₁≤b'' ([a'→b']→b₁ (coerce (Sfun a'≤a b≤b') x)))
--- λ (x : (A → B)) coerce b₁≤b'' ([a'→b']→b₁ (coerce (a→b ≤ a'→b') x))
+coerce (Sfun A'≤A B≤B') f = λ x → coerce B≤B' (f (coerce A'≤A x))
 
 -- Lookup in environment of values;
 -- All Val φ ~ All elements in φ satisfy Value predicate (are a value)
@@ -85,6 +93,7 @@ access (there x) (px ∷ ρ) = access x ρ
 
 -- Evaluation of Expressions
 eval : ∀ {nl φ t} → LExpr {nl} φ t → All Val φ → Val t
+eval Unit ϱ = tt
 eval (Var x) ϱ = access x ϱ
 eval (SubType e a≤a') ϱ = coerce a≤a' (eval e ϱ)
 eval (Lab-I {l} l∈snl) ϱ = l , (x∈⁅x⁆ l)
@@ -92,8 +101,10 @@ eval (Lab-I {l} l∈snl) ϱ = l , (x∈⁅x⁆ l)
 -- Tlabel Value l
 -- eval e = Σ (l : Fin n) (λ l → l ∈ snl)
 -- eval (case l (l ∈ snl)) (Tlabel l :: ϱ)
-eval (Lab-E e case) ϱ = eval (case (Σ.proj₁ (eval e ϱ)) (Σ.proj₂ (eval e ϱ)))
-                        ((Σ.proj₁ (eval e ϱ) , x∈⁅x⁆ (Σ.proj₁ (eval e ϱ))) ∷ ϱ)
+eval (Lab-E e case) ϱ with eval e ϱ
+eval (Lab-E e case) ϱ | lab , lab∈nl = eval (case lab lab∈nl) ϱ
+-- eval (Lab-E e case) ϱ = eval (case (Σ.proj₁ (eval e ϱ)) (Σ.proj₂ (eval e ϱ)))
+--                         ((Σ.proj₁ (eval e ϱ) , x∈⁅x⁆ (Σ.proj₁ (eval e ϱ))) ∷ ϱ)
 eval (Abs e) ϱ = λ x → eval e (x ∷ ϱ)
 eval (App e e₁) ϱ = (eval e ϱ) (eval e₁ ϱ)
 
@@ -115,11 +126,12 @@ ext ϱ (there x) = there (ϱ x)
 ---- E.g. λx. x ~ λy. y
 rename : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → A ∈` ψ)
                     → (∀ {A} → LExpr φ A → LExpr ψ A)
+rename ϱ Unit                    = Unit
 rename ϱ (Var x)                 = Var (ϱ x)
 rename ϱ (SubType expr:A' A'≤A)  = SubType (rename ϱ expr:A') A'≤A
 rename {ψ} ϱ (Lab-I l∈snl)       = Lab-I {ψ} l∈snl
 rename ϱ (Lab-E expr:snl case)   = Lab-E (rename ϱ expr:snl)
-                                   λ l l∈snl → (rename (ext ϱ) (case l l∈snl))
+                                   λ l l∈snl → (rename ϱ (case l l∈snl))
 rename ϱ (Abs expr:B)            = Abs (rename (ext ϱ) expr:B)
 rename ϱ (App expr:A->B expr:A)  = App (rename ϱ expr:A->B) (rename ϱ expr:A)
 
@@ -134,11 +146,12 @@ exts ϱ (there x) = rename there (ϱ x)
 ----- Simultaneous substitution -----
 subst : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → LExpr ψ A)
                    → (∀ {A : LTy nl} → LExpr φ A → LExpr ψ A)
+subst ϱ Unit                       = Unit
 subst ϱ (Var x)                    = ϱ x
 subst ϱ (SubType expr:A' A'≤A)     = SubType (subst ϱ expr:A') A'≤A
 subst {ψ} ϱ (Lab-I l∈snl)          = Lab-I {ψ} l∈snl
 subst ϱ (Lab-E expr:snl case)      = Lab-E (subst ϱ expr:snl)
-                                     λ l l∈snl → (subst (exts ϱ) (case l l∈snl))
+                                     λ l l∈snl → (subst ϱ (case l l∈snl))
 subst ϱ (Abs expr:B)               = Abs (subst (exts ϱ) expr:B)
 subst ϱ (App expr:A→B expr:A)     = App (subst ϱ expr:A→B) (subst ϱ expr:A)
 
@@ -163,42 +176,54 @@ data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
   Vfun : ∀ {ty ty' A B ty≤A B≤ty' exp}
          → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
 
-data _~>_ {n φ A} : LExpr {n} φ A → LExpr {n} φ A → Set where
+data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set where
 
-  ξ-App1 : ∀ {B} {L L' : (LExpr φ (Tfun B A))} {M}
+  ξ-App1 : ∀ {A B} {L L' : (LExpr φ (Tfun B A))} {M}
            → L ~> L'
            → App L M ~> App L' M
   
-  ξ-App2 : ∀ {M M' : LExpr φ A} {L}
+  ξ-App2 : ∀ {A B} {M M' : LExpr φ A} {L : LExpr φ (Tfun A B)}
            → M ~> M'
            → App L M ~> App L M'
 
-  β-App : ∀ {A' B B' A'≤A B≤B' exp W}
-          -- → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
+  β-App : ∀ {A A' B B' A'≤A B≤B' exp W}
           → Val' B W
           → App ((SubType (Abs exp) (Sfun {n} {B'} {B} {A'} {A} B≤B' A'≤A))) W
              ~>
              SubType (exp [[ SubType W B≤B' ]]) A'≤A
-             
-{- non-subtyping version of the above
-  β-App  : ∀ {B} {N : LExpr (B ∷ φ) A} {W : LExpr φ B}
-           → Val' B W   -- Vfun?
-           → App (Abs N) (W) ~> (N [[ W ]])
--}
 
-  ξ-SubType : ∀ {A'≤A} {L L' : LExpr φ A}
+  ξ-SubType : ∀ {A A' A≤A' } {L L' : LExpr φ A}
               → L ~> L'
-              → SubType L A'≤A ~> SubType L' A'≤A
+              → SubType{A = A}{A'} L A≤A' ~> SubType{A = A} L' A≤A'
 
-  ξ-Lab-E : ∀ {snl} {L L' : LExpr φ (Tlabel snl)} {cases}
+  ξ-Lab-E : ∀ {A snl} {L L' : LExpr φ (Tlabel snl)} {cases}
             → L ~> L'
-            → Lab-E L cases ~> Lab-E L' cases
+            → Lab-E{B = A} L cases ~> Lab-E L' cases
 
-  β-Lab-E : ∀ {l snl l∈snl tl≤tout} {cases}
-            → Val' {n} {φ} (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
-            → Lab-E (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout) cases
+  β-Lab-E : ∀ {A l snl l∈snl tl≤tout} {cases}
+            → Lab-E{B = A} (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout) cases
                ~>
-               ((cases l l∈snl) [[ Lab-I{l = l}{snl} l∈snl ]])
-               -- Substitute topmost variable for l in expression of case
+               cases l l∈snl
 
--- Mutual recursive definition w/ accessing env. instead of substitution?
+  γ-Lab-I : ∀ {l snl p}
+            → Lab-I{l = l}{snl = snl} p
+               ~>
+               SubType (Lab-I p) (≤-refl (Tlabel ⁅ l ⁆))
+
+  γ-Abs : ∀ {A B e}
+          → Abs{A = A} e
+             ~>
+             SubType (Abs e) (≤-refl (Tfun A B))
+
+  --- SubType (SubType x) y -> transitivity
+
+
+-- TODO:
+--      Call by Value
+--      Generation of reduction sequences analogous to book
+--      Extract properties of ⊆
+
+
+-- Examples
+ex1 : LExpr{suc zero} [] Tunit
+ex1 = Lab-E (Lab-I (x∈⁅x⁆ zero)) λ l x → Unit
