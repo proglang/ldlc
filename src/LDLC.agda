@@ -215,13 +215,17 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
              ~>
              SubType (Abs e) (≤-refl (Tfun A B))
 
-  --- SubType (SubType x) y -> transitivity
+  γ-SubType : ∀ {A A' A'' A≤A' A'≤A'' expr}
+              → SubType{A = A'}{A' = A''} (SubType{A = A} expr A≤A') A'≤A''
+                 ~>
+                 SubType expr (≤-trans A≤A' A'≤A'')
 
 
 -- TODO:
 --      Call by Value
 --      Generation of reduction sequences analogous to book
 --      Extract properties of ⊆
+--      Easier way to write down examples?
 
 
 -- Examples
