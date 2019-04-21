@@ -220,9 +220,28 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                  ~>
                  SubType expr (≤-trans A≤A' A'≤A'')
 
+-- Reflexive & transitive closure
+infix 2 _~>>_
+infix 1 begin_
+infixr 2 _~>⟨_⟩_
+infix 3 _∎
+
+data _~>>_ : ∀ {n} {φ} {A : LTy n} → LExpr φ A → LExpr φ A → Set where
+  _∎ : ∀ {n φ} {A : LTy n} (L : LExpr φ A)
+       → L ~>> L
+
+  _~>⟨_⟩_ : ∀ {n φ} {A : LTy n} (L : LExpr φ A) {M N : LExpr φ A}
+           → L ~> M
+           → M ~>> N
+           → L ~>> N
+
+begin_ : ∀ {n φ} {A : LTy n} {M N : LExpr φ A} → M ~>> N → M ~>> N
+begin M~>>N = M~>>N
 
 -- TODO:
 --      Call by Value
+--      Reflexive & transitive closure
+--      Progress theorem & non-reduction of values
 --      Generation of reduction sequences analogous to book
 --      Extract properties of ⊆
 --      Easier way to write down examples?
