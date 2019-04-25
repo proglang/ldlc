@@ -1,3 +1,4 @@
+
 module LDLC where
 
 open import Data.List
@@ -8,6 +9,7 @@ open import Data.Fin.Subset
 open import Data.Fin.Subset.Properties
 open import Data.Fin hiding (_≤_)
 open import Data.Product
+open import Data.Empty
 
 -- Types: nl ~ (max.) number of labels
 data LTy (nl : ℕ) : Set where
@@ -97,14 +99,9 @@ eval Unit ϱ = tt
 eval (Var x) ϱ = access x ϱ
 eval (SubType e a≤a') ϱ = coerce a≤a' (eval e ϱ)
 eval (Lab-I {l} l∈snl) ϱ = l , (x∈⁅x⁆ l)
--- Apply case function to evaluated expression, evaluate result under environment with added
--- Tlabel Value l
--- eval e = Σ (l : Fin n) (λ l → l ∈ snl)
--- eval (case l (l ∈ snl)) (Tlabel l :: ϱ)
+-- Apply case function to evaluated expression
 eval (Lab-E e case) ϱ with eval e ϱ
-eval (Lab-E e case) ϱ | lab , lab∈nl = eval (case lab lab∈nl) ϱ
--- eval (Lab-E e case) ϱ = eval (case (Σ.proj₁ (eval e ϱ)) (Σ.proj₂ (eval e ϱ)))
---                         ((Σ.proj₁ (eval e ϱ) , x∈⁅x⁆ (Σ.proj₁ (eval e ϱ))) ∷ ϱ)
+... | lab , lab∈nl = eval (case lab lab∈nl) ϱ
 eval (Abs e) ϱ = λ x → eval e (x ∷ ϱ)
 eval (App e e₁) ϱ = (eval e ϱ) (eval e₁ ϱ)
 
@@ -170,6 +167,7 @@ _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
 -- We force values to have type SubType, since Lab-I results in expressions with type {l}
 -- and we want to keep the information about which subset l is in
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
+  Vunit : ∀ {e} → Val' (Tunit) e
   -- Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
   -- Changed x to snl, required for β-Lab-E ?
   Vlab : ∀ {l snl l∈snl tl≤tout} → Val' (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
@@ -183,14 +181,15 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
            → App L M ~> App L' M
   
   ξ-App2 : ∀ {A B} {M M' : LExpr φ A} {L : LExpr φ (Tfun A B)}
+           → Val' (Tfun A B) L
            → M ~> M'
            → App L M ~> App L M'
 
-  β-App : ∀ {A A' B B' A'≤A B≤B' exp W}
-          → Val' B W
-          → App ((SubType (Abs exp) (Sfun {n} {B'} {B} {A'} {A} B≤B' A'≤A))) W
+  β-App : ∀ {A A' B B' A'≤A B≤B' exp M}
+          → Val' B M
+          → App ((SubType (Abs exp) (Sfun {n} {B'} {B} {A'} {A} B≤B' A'≤A))) M
              ~>
-             SubType (exp [[ SubType W B≤B' ]]) A'≤A
+             SubType (exp [[ SubType M B≤B' ]]) A'≤A
 
   ξ-SubType : ∀ {A A' A≤A' } {L L' : LExpr φ A}
               → L ~> L'
@@ -220,7 +219,8 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                  ~>
                  SubType expr (≤-trans A≤A' A'≤A'')
 
--- Reflexive & transitive closure
+----- Properties of small-step evaluation -----
+----- Reflexive & transitive closure, required for generation of evaluation sequences
 infix 2 _~>>_
 infix 1 begin_
 infixr 2 _~>⟨_⟩_
@@ -238,10 +238,35 @@ data _~>>_ : ∀ {n} {φ} {A : LTy n} → LExpr φ A → LExpr φ A → Set wher
 begin_ : ∀ {n φ} {A : LTy n} {M N : LExpr φ A} → M ~>> N → M ~>> N
 begin M~>>N = M~>>N
 
+----- Progress Theorem
+----- Definiton: ∀ M ∈ (LExpr [] A) : (∃N : M ~> N) ∨ (Val'(M))
+data Progress {n A} (M : LExpr{n} [] A) : Set where
+  step : ∀ {N : LExpr [] A} → M ~> N → Progress M
+  done : Val' A M → Progress M
+
+-- Proof
+progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
+progress Unit               = done Vunit
+progress (Var ()) -- Var requires a proof for A ∈ [] which cannot exist
+progress (SubType expr:A' A'≤A) with progress expr:A'
+...                                           | step expr~>expr' = step (ξ-SubType expr~>expr')
+progress (SubType expr:A' Sunit)              | done Vunit       = done Vunit
+-- Without γ-SubType rule we could just use Vlab/Vfun and be done
+progress (SubType expr:A' (Slabel snl≤snl'))  | done Vlab        = step γ-SubType
+progress (SubType expr:A->B (Sfun A'≤A B≤B')) | done Vfun        = step γ-SubType
+progress (Lab-I l∈snl)      = step γ-Lab-I
+progress (Lab-E expr case) with progress expr
+...                                           | step expr~>expr' = step (ξ-Lab-E expr~>expr')
+...                                           | done Vlab        = step β-Lab-E
+progress (Abs expr)         = step γ-Abs
+progress (App L M) with progress L
+...                                           | step L~>L'       = step (ξ-App1 L~>L')
+...                                           | done Vfun with progress M
+...                                           | step M~>M'       = step (ξ-App2 Vfun M~>M')
+...                                           | done x           = step (β-App x)
+
 -- TODO:
---      Call by Value
---      Reflexive & transitive closure
---      Progress theorem & non-reduction of values
+--      Non-reduction of values
 --      Generation of reduction sequences analogous to book
 --      Extract properties of ⊆
 --      Easier way to write down examples?
