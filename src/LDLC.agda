@@ -167,7 +167,7 @@ _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
 -- We force values to have type SubType, since Lab-I results in expressions with type {l}
 -- and we want to keep the information about which subset l is in
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
-  Vunit : ∀ {e} → Val' (Tunit) e
+  Vunit :  Val' (Tunit) Unit
   -- Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
   -- Changed x to snl, required for β-Lab-E ?
   Vlab : ∀ {l snl l∈snl tl≤tout} → Val' (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
@@ -191,6 +191,8 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
              ~>
              SubType (exp [[ SubType M B≤B' ]]) A'≤A
 
+  -- When trying to create evaluation sequences, this and the fitting γ rule are
+  -- applied indefinitely
   ξ-SubType : ∀ {A A' A≤A' } {L L' : LExpr φ A}
               → L ~> L'
               → SubType{A = A}{A'} L A≤A' ~> SubType{A = A} L' A≤A'
@@ -219,7 +221,42 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                  ~>
                  SubType expr (≤-trans A≤A' A'≤A'')
 
+  -- Either we define Unit values to be SubTypes of Unit≤Unit; or we introducte the following rule
+  β-SubType-Unit : SubType Unit Sunit
+                   ~>
+                   Unit
+
 ----- Properties of small-step evaluation -----
+
+----- Progress Theorem
+----- Definiton: ∀ M ∈ (LExpr [] A) : (∃N : M ~> N) ∨ (Val'(M))
+data Progress {n A} (M : LExpr{n} [] A) : Set where
+  step : ∀ {N : LExpr [] A} → M ~> N → Progress M
+  done : Val' A M → Progress M
+
+-- Proof
+progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
+progress Unit               = done Vunit
+progress (Var ()) -- Var requires a proof for A ∈ [] which cannot exist
+progress (SubType expr:A' A'≤A) with progress expr:A'
+...                                           | step expr~>expr' = step (ξ-SubType expr~>expr')
+progress (SubType expr:A' Sunit)              | done Vunit       = step (β-SubType-Unit)
+-- Without γ-SubType rule we could just use Vlab/Vfun and be done
+progress (SubType expr:A' (Slabel snl≤snl'))  | done Vlab        = step γ-SubType
+progress (SubType expr:A->B (Sfun A'≤A B≤B')) | done Vfun        = step γ-SubType
+progress (Lab-I l∈snl)      = step γ-Lab-I
+progress (Lab-E expr case) with progress expr
+...                                           | step expr~>expr' = step (ξ-Lab-E expr~>expr')
+...                                           | done Vlab        = step β-Lab-E
+progress (Abs expr)         = step γ-Abs
+progress (App L M) with progress L
+...                                           | step L~>L'       = step (ξ-App1 L~>L')
+...                                           | done Vfun with progress M
+...                                              | step M~>M'    = step (ξ-App2 Vfun M~>M')
+...                                              | done x        = step (β-App x)
+
+----- GENERATION OF EVALUATION SEQUENCES -----
+----- Idea and implementation from PLFA
 ----- Reflexive & transitive closure, required for generation of evaluation sequences
 infix 2 _~>>_
 infix 1 begin_
@@ -238,40 +275,65 @@ data _~>>_ : ∀ {n} {φ} {A : LTy n} → LExpr φ A → LExpr φ A → Set wher
 begin_ : ∀ {n φ} {A : LTy n} {M N : LExpr φ A} → M ~>> N → M ~>> N
 begin M~>>N = M~>>N
 
------ Progress Theorem
------ Definiton: ∀ M ∈ (LExpr [] A) : (∃N : M ~> N) ∨ (Val'(M))
-data Progress {n A} (M : LExpr{n} [] A) : Set where
-  step : ∀ {N : LExpr [] A} → M ~> N → Progress M
-  done : Val' A M → Progress M
+data Gas : Set where
+  gas : ℕ → Gas
 
--- Proof
-progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
-progress Unit               = done Vunit
-progress (Var ()) -- Var requires a proof for A ∈ [] which cannot exist
-progress (SubType expr:A' A'≤A) with progress expr:A'
-...                                           | step expr~>expr' = step (ξ-SubType expr~>expr')
-progress (SubType expr:A' Sunit)              | done Vunit       = done Vunit
--- Without γ-SubType rule we could just use Vlab/Vfun and be done
-progress (SubType expr:A' (Slabel snl≤snl'))  | done Vlab        = step γ-SubType
-progress (SubType expr:A->B (Sfun A'≤A B≤B')) | done Vfun        = step γ-SubType
-progress (Lab-I l∈snl)      = step γ-Lab-I
-progress (Lab-E expr case) with progress expr
-...                                           | step expr~>expr' = step (ξ-Lab-E expr~>expr')
-...                                           | done Vlab        = step β-Lab-E
-progress (Abs expr)         = step γ-Abs
-progress (App L M) with progress L
-...                                           | step L~>L'       = step (ξ-App1 L~>L')
-...                                           | done Vfun with progress M
-...                                           | step M~>M'       = step (ξ-App2 Vfun M~>M')
-...                                           | done x           = step (β-App x)
+data Finished {n φ A} (N : LExpr{n} φ A) : Set where
+  done : Val' A N → Finished N
+  out-of-gas : Finished N
+
+data Steps : ∀ {n A} → LExpr{n} [] A → Set where
+  steps : ∀ {n A} {L N : LExpr{n} [] A}
+          → L ~>> N
+          → Finished N
+          → Steps L
+
+eval' : ∀ {n A} → Gas → (L : LExpr{n} [] A) → Steps L
+eval' (gas zero) L              = steps (L ∎) out-of-gas
+eval' (gas (suc m)) L with progress L
+...      | done VL              = steps (L ∎) (done VL)
+...      | step {M} L~>M with eval' (gas m) M
+...         | steps M~>>N fin   = steps (L ~>⟨ L~>M ⟩ M~>>N) fin 
 
 -- TODO:
 --      Non-reduction of values
---      Generation of reduction sequences analogous to book
 --      Extract properties of ⊆
 --      Easier way to write down examples?
 
 
 -- Examples
+-- (λ (x : Unit) → x) (Unit)
+ex0 : LExpr{suc zero} [] Tunit
+ex0 = App (Abs (Unit{φ = (Tunit ∷ [])})) (Unit)
+
+_ : ex0 ~>> Unit
+_ =
+  begin
+    App (Abs (Unit)) (Unit)
+  ~>⟨ ξ-App1 γ-Abs ⟩
+    App (SubType (Abs Unit) (Sfun Sunit Sunit)) (Unit)
+  ~>⟨ β-App (Vunit) ⟩
+--    SubType (Unit{φ = (Tunit ∷ [])} [[ SubType Unit Sunit ]]) Sunit
+    SubType (Unit) Sunit
+  ~>⟨ β-SubType-Unit ⟩
+    Unit
+  ∎
+
+
 ex1 : LExpr{suc zero} [] Tunit
 ex1 = Lab-E (Lab-I (x∈⁅x⁆ zero)) λ l x → Unit
+
+{--
+_ : ex1 ~>> Unit
+_ =
+  begin
+    Lab-E (Lab-I (x∈⁅x⁆ zero)) (λ l x → Unit)
+  ~>⟨ ξ-Lab-E (γ-Lab-I) ⟩
+    Lab-E (SubType (Lab-I (x∈⁅x⁆ zero)) (Slabel (⊆-refl ⁅ zero ⁆))) (λ l x → Unit)
+  ~>⟨ β-Lab-E ⟩
+    (λ l x → Unit) zero x∈⁅x⁆
+  ∎
+--}
+
+
+    
