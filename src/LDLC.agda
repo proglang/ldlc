@@ -323,7 +323,7 @@ _ =
 ex1 : LExpr{suc zero} [] Tunit
 ex1 = Lab-E (Lab-I (x∈⁅x⁆ zero)) λ l x → Unit
 
-{--
+
 _ : ex1 ~>> Unit
 _ =
   begin
@@ -331,9 +331,10 @@ _ =
   ~>⟨ ξ-Lab-E (γ-Lab-I) ⟩
     Lab-E (SubType (Lab-I (x∈⁅x⁆ zero)) (Slabel (⊆-refl ⁅ zero ⁆))) (λ l x → Unit)
   ~>⟨ β-Lab-E ⟩
-    (λ l x → Unit) zero x∈⁅x⁆
+--    (λ l x → Unit) zero x∈⁅x⁆
+    Unit
   ∎
---}
+
 
 
     
