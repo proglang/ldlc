@@ -168,9 +168,7 @@ _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
 -- and we want to keep the information about which subset l is in
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
   Vunit :  Val' (Tunit) Unit
-  -- Vlab : ∀ {l snl x l∈snl tl≤tout} → Val' (Tlabel x) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
-  -- Changed x to snl, required for β-Lab-E ?
-  Vlab : ∀ {l snl l∈snl tl≤tout} → Val' (Tlabel snl) (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
+  Vlab : ∀ {l snl snl' l∈snl tl≤tout} → Val' (Tlabel snl') (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
   Vfun : ∀ {ty ty' A B ty≤A B≤ty' exp}
          → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
 
@@ -201,7 +199,7 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
             → L ~> L'
             → Lab-E{B = A} L cases ~> Lab-E L' cases
 
-  β-Lab-E : ∀ {A l snl l∈snl tl≤tout} {cases}
+  β-Lab-E : ∀ {A l snl l∈snl tl≤tout cases}
             → Lab-E{B = A} (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout) cases
                ~>
                cases l l∈snl
@@ -238,16 +236,28 @@ data Progress {n A} (M : LExpr{n} [] A) : Set where
 progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
 progress Unit               = done Vunit
 progress (Var ()) -- Var requires a proof for A ∈ [] which cannot exist
-progress (SubType expr:A' A'≤A) with progress expr:A'
-...                                           | step expr~>expr' = step (ξ-SubType expr~>expr')
-progress (SubType expr:A' Sunit)              | done Vunit       = step (β-SubType-Unit)
--- Without γ-SubType rule we could just use Vlab/Vfun and be done
-progress (SubType expr:A' (Slabel snl≤snl'))  | done Vlab        = step γ-SubType
-progress (SubType expr:A->B (Sfun A'≤A B≤B')) | done Vfun        = step γ-SubType
+progress (SubType Unit Sunit)                = step β-SubType-Unit
+progress (SubType (Var ()) A'≤A)
+progress (SubType (SubType expr:A' x) A'≤A)  = step γ-SubType
+-- Following problem:
+--                   * Subtyping allows Lab-I l∈snl to be put under any set snl' that contains l,
+--                     which means the following case does not yield a Vlab since its definition
+--                     requires the subset of Lab-I to be the same as the super type set
+--                   * Changing the definition of Vlab as to allow any super set, not just the
+--                     one used in Lab-I, will then make the application of β-Lab-E impossible,
+--                     since cases maps from l∈snl' where snl' is from (Vlab : Tlabel snl'),
+--                     β-Lab-E requires l∈snl = l∈snl' which does not always hold
+-- Fixes?
+--                   * Changing Lab-I as to always contain its superset?
+progress (SubType (Lab-I{l}{snl} l∈snl) (Slabel l⊆snl'))  = done Vlab
+progress (SubType (Lab-E expr:A' x) A'≤A)    = {!!}
+progress (SubType (Abs expr:A') A'≤A)        = {!!}
+progress (SubType (App expr:A' expr:A'') A'≤A) = {!!}
 progress (Lab-I l∈snl)      = step γ-Lab-I
 progress (Lab-E expr case) with progress expr
 ...                                           | step expr~>expr' = step (ξ-Lab-E expr~>expr')
-...                                           | done Vlab        = step β-Lab-E
+...                                           | done Vlab = step {!!}
+-- ...                                           | done (Vlab{l = l}{snl = snl}{snl' = snl'}{l∈snl = l∈snl}{tl≤tout = (Slabel x)}) = step {!β-Lab-E{snl = snl'}{l∈snl = x (x∈⁅x⁆ l)}{cases = case}!}
 progress (Abs expr)         = step γ-Abs
 progress (App L M) with progress L
 ...                                           | step L~>L'       = step (ξ-App1 L~>L')
