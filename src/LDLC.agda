@@ -61,7 +61,7 @@ data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
   Var      : ∀ {φ t} → (x : t ∈` φ) → LExpr φ t   -- t ∈` φ gives us the position of "x" in env
   SubType  : ∀ {A A' φ} →  LExpr φ A → A ≤ A'
                         →  LExpr φ A'
-  Lab-I    : ∀ {l snl φ} → l ∈ snl → LExpr φ (Tlabel ⁅ l ⁆)
+  Lab-I    : ∀ {l snl φ} → l ∈ snl → LExpr φ (Tlabel snl)
   Lab-E    : ∀ {snl φ B} → LExpr φ (Tlabel snl)
                          → (∀ l → l ∈ snl → LExpr φ B) 
                          → LExpr φ B
@@ -98,7 +98,7 @@ eval : ∀ {nl φ t} → LExpr {nl} φ t → All Val φ → Val t
 eval Unit ϱ = tt
 eval (Var x) ϱ = access x ϱ
 eval (SubType e a≤a') ϱ = coerce a≤a' (eval e ϱ)
-eval (Lab-I {l} l∈snl) ϱ = l , (x∈⁅x⁆ l)
+eval (Lab-I {l} l∈snl) ϱ = l , (l∈snl)
 -- Apply case function to evaluated expression
 eval (Lab-E e case) ϱ with eval e ϱ
 ... | lab , lab∈nl = eval (case lab lab∈nl) ϱ
@@ -189,8 +189,6 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
              ~>
              SubType (exp [[ SubType M B≤B' ]]) A'≤A
 
-  -- When trying to create evaluation sequences, this and the fitting γ rule are
-  -- applied indefinitely
   ξ-SubType : ∀ {A A' A≤A' } {L L' : LExpr φ A}
               → L ~> L'
               → SubType{A = A}{A'} L A≤A' ~> SubType{A = A} L' A≤A'
@@ -199,15 +197,17 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
             → L ~> L'
             → Lab-E{B = A} L cases ~> Lab-E L' cases
 
-  β-Lab-E : ∀ {A l snl l∈snl tl≤tout cases}
-            → Lab-E{B = A} (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout) cases
+  -- This rule forces snl = snl' if we use l∈snl for cases
+  -- => Use subset proof to show l ∈ snl'?
+  β-Lab-E : ∀ {A l snl snl' l∈snl cases} {snl⊆snl' : snl ⊆ snl'}
+            → Lab-E{snl = snl'}{B = A} (SubType (Lab-I{l = l}{snl} l∈snl) (Slabel{snl = snl}{snl' = snl'} snl⊆snl')) cases
                ~>
-               cases l l∈snl
+               cases l (snl⊆snl' l∈snl)
 
   γ-Lab-I : ∀ {l snl p}
             → Lab-I{l = l}{snl = snl} p
                ~>
-               SubType (Lab-I p) (≤-refl (Tlabel ⁅ l ⁆))
+               SubType (Lab-I p) (≤-refl (Tlabel snl))
 
   γ-Abs : ∀ {A B e}
           → Abs{A = A} e
@@ -225,48 +225,6 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                    Unit
 
 ----- Properties of small-step evaluation -----
-
------ Progress Theorem
------ Definiton: ∀ M ∈ (LExpr [] A) : (∃N : M ~> N) ∨ (Val'(M))
-data Progress {n A} (M : LExpr{n} [] A) : Set where
-  step : ∀ {N : LExpr [] A} → M ~> N → Progress M
-  done : Val' A M → Progress M
-
--- Proof
-progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
-progress Unit               = done Vunit
-progress (Var ()) -- Var requires a proof for A ∈ [] which cannot exist
-progress (SubType Unit Sunit)                = step β-SubType-Unit
-progress (SubType (Var ()) A'≤A)
-progress (SubType (SubType expr:A' x) A'≤A)  = step γ-SubType
--- Following problem:
---                   * Subtyping allows Lab-I l∈snl to be put under any set snl' that contains l,
---                     which means the following case does not yield a Vlab since its definition
---                     requires the subset of Lab-I to be the same as the super type set
---                   * Changing the definition of Vlab as to allow any super set, not just the
---                     one used in Lab-I, will then make the application of β-Lab-E impossible,
---                     since cases maps from l∈snl' where snl' is from (Vlab : Tlabel snl'),
---                     β-Lab-E requires l∈snl = l∈snl' which does not always hold
--- Fixes?
---                   * Changing Lab-I as to always contain its superset?
-progress (SubType (Lab-I{l}{snl} l∈snl) (Slabel l⊆snl'))  = done Vlab
-progress (SubType (Lab-E expr:A' x) A'≤A)    = {!!}
-progress (SubType (Abs expr:A') A'≤A)        = {!!}
-progress (SubType (App expr:A' expr:A'') A'≤A) = {!!}
-progress (Lab-I l∈snl)      = step γ-Lab-I
-progress (Lab-E expr case) with progress expr
-...                                           | step expr~>expr' = step (ξ-Lab-E expr~>expr')
-...                                           | done Vlab = step {!!}
--- ...                                           | done (Vlab{l = l}{snl = snl}{snl' = snl'}{l∈snl = l∈snl}{tl≤tout = (Slabel x)}) = step {!β-Lab-E{snl = snl'}{l∈snl = x (x∈⁅x⁆ l)}{cases = case}!}
-progress (Abs expr)         = step γ-Abs
-progress (App L M) with progress L
-...                                           | step L~>L'       = step (ξ-App1 L~>L')
-...                                           | done Vfun with progress M
-...                                              | step M~>M'    = step (ξ-App2 Vfun M~>M')
-...                                              | done x        = step (β-App x)
-
------ GENERATION OF EVALUATION SEQUENCES -----
------ Idea and implementation from PLFA
 ----- Reflexive & transitive closure, required for generation of evaluation sequences
 infix 2 _~>>_
 infix 1 begin_
@@ -284,6 +242,46 @@ data _~>>_ : ∀ {n} {φ} {A : LTy n} → LExpr φ A → LExpr φ A → Set wher
 
 begin_ : ∀ {n φ} {A : LTy n} {M N : LExpr φ A} → M ~>> N → M ~>> N
 begin M~>>N = M~>>N
+
+
+----- Progress Theorem
+----- Definiton: ∀ M ∈ (LExpr [] A) : (∃N : M ~> N) ∨ (Val'(M))
+data Progress {n A} (M : LExpr{n} [] A) : Set where
+  step : ∀ {N : LExpr [] A} → M ~> N → Progress M
+  done : Val' A M → Progress M
+
+-- Proof
+progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
+progress Unit                                                                             = done Vunit
+progress (Var ())                                                         -- Var requires a proof for A ∈ [] which cannot exist
+progress (SubType Unit Sunit)                                                             = step β-SubType-Unit
+progress (SubType (Var ()) A'≤A)
+progress (SubType (SubType expr:A' x) A'≤A)                                               = step γ-SubType
+progress (SubType (Lab-I{l}{snl} l∈snl) (Slabel{snl' = snl'} snl⊆snl'))                  = done Vlab 
+progress (SubType (Lab-E expr:A' x) A'≤A) with progress (Lab-E expr:A' x)
+...                                           | step a                                    = step (ξ-SubType a)
+...                                           | done ()                   -- Lab-E without SubType can't be a value
+progress (SubType (Abs expr:A') A'≤A) with progress (Abs expr:A')
+...                                           | step a                                    = step (ξ-SubType a)
+...                                           | done ()                   -- Abs wihout SubType can't be a value
+progress (SubType (App expr:A' expr:A'') A'≤A) with progress (expr:A')
+...                                           | step a                                    = step (ξ-SubType (ξ-App1 a))
+...                                           | done Vfun with progress (expr:A'')
+...                                              | step b                                 = step (ξ-SubType (ξ-App2 Vfun b))
+...                                              | done val                               = step (ξ-SubType (β-App val))
+progress (Lab-I l∈snl)                                                                    = step γ-Lab-I
+progress (Lab-E expr cases) with progress expr
+...                                           | step expr~>expr'                          = step (ξ-Lab-E expr~>expr')
+...                                           | done (Vlab{tl≤tout = Slabel snl⊆snl'})   = step (β-Lab-E)
+progress (Abs expr)                                                                       = step γ-Abs
+progress (App L M) with progress L
+...                                           | step L~>L'                                = step (ξ-App1 L~>L')
+...                                           | done Vfun with progress M
+...                                              | step M~>M'                             = step (ξ-App2 Vfun M~>M')
+...                                              | done x                                 = step (β-App x)
+
+----- GENERATION OF EVALUATION SEQUENCES -----
+----- Idea and implementation from PLFA
 
 data Gas : Set where
   gas : ℕ → Gas
@@ -305,8 +303,9 @@ eval' (gas (suc m)) L with progress L
 ...      | step {M} L~>M with eval' (gas m) M
 ...         | steps M~>>N fin   = steps (L ~>⟨ L~>M ⟩ M~>>N) fin 
 
+
 -- TODO:
---      Non-reduction of values
+--      Non-reduction of values (not possible yet, see below)
 --      Extract properties of ⊆
 --      Easier way to write down examples?
 
@@ -316,6 +315,10 @@ eval' (gas (suc m)) L with progress L
 ex0 : LExpr{suc zero} [] Tunit
 ex0 = App (Abs (Unit{φ = (Tunit ∷ [])})) (Unit)
 
+-- PROBLEM: Term (SubType (Abs Unit) (Sfun Sunit Sunit)) is both a value AND can progress!
+--          (a) Vfun
+--          (b) ξ-SubType ~> (SubType (SubType (Abs Unit) (Sfun Sunit Sunit)) (Sfun Sunit Sunit))
+--        => Automatic term evaluation stuck in an infinite ξ-SubType & γ-SubType loop
 _ : ex0 ~>> Unit
 _ =
   begin
@@ -333,7 +336,6 @@ _ =
 ex1 : LExpr{suc zero} [] Tunit
 ex1 = Lab-E (Lab-I (x∈⁅x⁆ zero)) λ l x → Unit
 
-
 _ : ex1 ~>> Unit
 _ =
   begin
@@ -345,6 +347,22 @@ _ =
     Unit
   ∎
 
+-- Boolean mapping to 4 for true, 2 for false
+-- boolmap : ∀ {snl : Subset 2} {snl' : Subset 5} → (∀ l → l ∈ snl → LExpr [] (Tlabel snl'))
+-- boolmap (Fin 0) l∈snl = {!!}
 
+ex2 : LExpr{5} [] Tunit
+ex2 = Lab-E (Lab-I (x∈⁅x⁆ zero)) {!!}
+
+-- Notes
+-- Following problem:
+--                   * Subtyping allows Lab-I l∈snl to be put under any set snl' that contains l,
+--                     which means the following case does not yield a Vlab since its definition
+--                     requires the subset of Lab-I to be the same as the super type set
+--                   * Changing the definition of Vlab as to allow any super set, not just the
+--                     one used in Lab-I, will then make the application of β-Lab-E impossible,
+--                     since cases maps from l∈snl' where snl' is from (Vlab : Tlabel snl'),
+--                     β-Lab-E requires l∈snl = l∈snl' which does not always hold
+--                   => FIX: Allow any super type, use proof of subtype in β-Lab-E for case function
 
     
