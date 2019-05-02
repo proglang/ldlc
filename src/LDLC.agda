@@ -1,4 +1,3 @@
-
 module LDLC where
 
 open import Data.List
@@ -168,7 +167,7 @@ _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
 -- and we want to keep the information about which subset l is in
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
   Vunit :  Val' (Tunit) Unit
-  Vlab : ∀ {l snl snl' l∈snl tl≤tout} → Val' (Tlabel snl') (SubType (Lab-I{l = l}{snl} l∈snl) tl≤tout)
+  Vlab : ∀ {l snl l∈snl} → Val' (Tlabel snl) (Lab-I{l = l}{snl} l∈snl)
   Vfun : ∀ {ty ty' A B ty≤A B≤ty' exp}
          → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
 
@@ -197,17 +196,15 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
             → L ~> L'
             → Lab-E{B = A} L cases ~> Lab-E L' cases
 
-  -- This rule forces snl = snl' if we use l∈snl for cases
-  -- => Use subset proof to show l ∈ snl'?
-  β-Lab-E : ∀ {A l snl snl' l∈snl cases} {snl⊆snl' : snl ⊆ snl'}
-            → Lab-E{snl = snl'}{B = A} (SubType (Lab-I{l = l}{snl} l∈snl) (Slabel{snl = snl}{snl' = snl'} snl⊆snl')) cases
+  β-Lab-E : ∀ {A l snl l∈snl cases}
+            → Lab-E{B = A} (Lab-I{l = l}{snl} l∈snl) cases
                ~>
-               cases l (snl⊆snl' l∈snl)
+               cases l (l∈snl)
 
-  γ-Lab-I : ∀ {l snl p}
-            → Lab-I{l = l}{snl = snl} p
+  γ-Lab-I : ∀ {l snl snl'} {l∈snl : l ∈ snl} {snl⊆snl' : snl ⊆ snl'}
+            → SubType (Lab-I{l = l}{snl = snl} l∈snl) (Slabel snl⊆snl')
                ~>
-               SubType (Lab-I p) (≤-refl (Tlabel snl))
+               Lab-I (snl⊆snl' l∈snl)
 
   γ-Abs : ∀ {A B e}
           → Abs{A = A} e
@@ -257,7 +254,7 @@ progress (Var ())                                                         -- Var
 progress (SubType Unit Sunit)                                                             = step β-SubType-Unit
 progress (SubType (Var ()) A'≤A)
 progress (SubType (SubType expr:A' x) A'≤A)                                               = step γ-SubType
-progress (SubType (Lab-I{l}{snl} l∈snl) (Slabel{snl' = snl'} snl⊆snl'))                  = done Vlab 
+progress (SubType (Lab-I{l}{snl} l∈snl) (Slabel{snl' = snl'} snl⊆snl'))                  = step γ-Lab-I
 progress (SubType (Lab-E expr:A' x) A'≤A) with progress (Lab-E expr:A' x)
 ...                                           | step a                                    = step (ξ-SubType a)
 ...                                           | done ()                   -- Lab-E without SubType can't be a value
@@ -269,10 +266,10 @@ progress (SubType (App expr:A' expr:A'') A'≤A) with progress (expr:A')
 ...                                           | done Vfun with progress (expr:A'')
 ...                                              | step b                                 = step (ξ-SubType (ξ-App2 Vfun b))
 ...                                              | done val                               = step (ξ-SubType (β-App val))
-progress (Lab-I l∈snl)                                                                    = step γ-Lab-I
+progress (Lab-I l∈snl)                                                                    = done Vlab 
 progress (Lab-E expr cases) with progress expr
 ...                                           | step expr~>expr'                          = step (ξ-Lab-E expr~>expr')
-...                                           | done (Vlab{tl≤tout = Slabel snl⊆snl'})   = step (β-Lab-E)
+...                                           | done Vlab                                 = step (β-Lab-E)
 progress (Abs expr)                                                                       = step γ-Abs
 progress (App L M) with progress L
 ...                                           | step L~>L'                                = step (ξ-App1 L~>L')
@@ -340,19 +337,23 @@ _ : ex1 ~>> Unit
 _ =
   begin
     Lab-E (Lab-I (x∈⁅x⁆ zero)) (λ l x → Unit)
-  ~>⟨ ξ-Lab-E (γ-Lab-I) ⟩
-    Lab-E (SubType (Lab-I (x∈⁅x⁆ zero)) (Slabel (⊆-refl ⁅ zero ⁆))) (λ l x → Unit)
   ~>⟨ β-Lab-E ⟩
 --    (λ l x → Unit) zero x∈⁅x⁆
     Unit
   ∎
 
+
 -- Boolean mapping to 4 for true, 2 for false
--- boolmap : ∀ {snl : Subset 2} {snl' : Subset 5} → (∀ l → l ∈ snl → LExpr [] (Tlabel snl'))
--- boolmap (Fin 0) l∈snl = {!!}
+{--
+boolmap : ∀ {snl : Subset 2} {snl' : Subset 5} → (∀ l → l ∈ snl → LExpr [] (Tlabel snl'))
+boolmap {snl'} zero  l∈snl  = (Lab-I ((fromℕ 2) ∈ snl'))
+boolmap (suc x) l∈snl  = {!!}
 
 ex2 : LExpr{5} [] Tunit
 ex2 = Lab-E (Lab-I (x∈⁅x⁆ zero)) {!!}
+--}
+
+
 
 -- Notes
 -- Following problem:
