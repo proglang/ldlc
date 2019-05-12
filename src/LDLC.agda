@@ -2,6 +2,7 @@ module LDLC where
 
 open import Data.List
 open import Data.List.All
+open import Data.List.Base
 open import Data.Unit hiding (_≤_ ; poset)
 open import Data.Nat hiding (_≤_)
 open import Data.Fin.Subset
@@ -9,6 +10,7 @@ open import Data.Fin.Subset.Properties
 open import Data.Fin hiding (_≤_)
 open import Data.Product
 open import Data.Empty
+open import Relation.Binary
 
 -- Types: nl ~ (max.) number of labels
 data LTy (nl : ℕ) : Set where
@@ -163,13 +165,89 @@ _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
   ϱ here      = M
   ϱ (there x) = Var x 
 
+-- Type substitution
+-- typesub extension lemma: If we can substitute types such that LExpr (A ∷ φ) B becomes LExpr (A' ∷ φ) B',
+--                          we can do the same with an environment extended by a variable
+{--
+typesubext : ∀ {nl φ A B A' B' X} → LExpr{nl} (X ∷ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (X ∷ (A' ∷ φ)) B'
+typesubext Unit a'≤a Sunit             = Unit
+-- B ∈ (B ∷ (A ∷ φ)) => can change A to A' and use subtyping
+typesubext {A = A} {B = B} {X = .B}      (Var here)                  a'≤a b≤b' = SubType (Var here) b≤b'
+-- B ∈ (X ∷ (A ∷ φ)) => B = A; can change A to A', use (A' ∈ (X ∷ (A' ∷ φ))) and transitivity of A' ≤ A & A = B ≤ B'
+typesubext {φ = φ} {.B} {B} {A'} {X = X} (Var (there here))          a'≤a b≤b' = SubType (Var (there here)) (≤-trans a'≤a b≤b')
+-- B ∈ (X ∷ (A ∷ φ)) => B is in φ, can simply extend φ with A' and X
+typesubext {φ = φ} {A} {B} {A'} {X = X}  (Var (there (there x)))     a'≤a b≤b' = SubType (Var (ϱ' x)) b≤b'
+  where
+    ϱ' : B ∈` φ → B ∈` (X ∷ A' ∷ φ)
+    ϱ' here                        = there (there (here))
+    ϱ' (there x)                   = there (there (there x))
+typesubext (SubType expr b''≤b) a'≤a b≤b' = typesubext expr a'≤a (≤-trans b''≤b b≤b')
+typesubext (Lab-I x) a'≤a b≤b'         = SubType (Lab-I x) b≤b'
+typesubext (Lab-E{snl = snl} expr cases) a'≤a b≤b' = Lab-E (typesubext expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesubext (cases l x) a'≤a b≤b'
+typesubext {φ = φ} {A = A} {B = A°→B°} {A' = A'} {B' = A°°→B°°} {X = X} (Abs{A = .A°} expr) a'≤a (Sfun{A = A°}{A' = A°°}{B = B°}{B' = B°°} (a°°≤a°) (b°≤b°°))
+ = {!!}
+-- = SubType (Abs (typesubext{φ = φ}{A = X}{A' = X}{X = A''} (typesubext{φ = φ}{A = A}{B = B`}{A' = A'}{B' = B`}{X = X} expr a'≤a (≤-refl B`)) (≤-refl X) (≤-refl B`))) b≤b'
+
+-- SubType (Abs (typesubext {!typesubext expr ? (≤-refl B)!} (≤-refl X) {!!})) b≤b'
+typesubext (App expr expr₁) a'≤a b≤b'  = {!!}
+--}
+{--
+typesubext : ∀ {nl φ} → (∀ {A B A' B'} → LExpr{nl} (A ∷ φ) B → A' ≤ A → B ≤ B' → LExpr (A' ∷ φ) B')
+                      → (∀ {A B A' B' X} → LExpr{nl} (X ∷ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (X ∷ (A' ∷ φ)) B')
+typesubext ϱ Unit a'≤a Sunit             = Unit
+-- B ∈ (B ∷ (A ∷ φ)) => can change A to A' and use subtyping
+typesubext ϱ {A = A} {B = B} {X = .B}      (Var here)                  a'≤a b≤b' = SubType (Var here) b≤b'
+-- B ∈ (X ∷ (A ∷ φ)) => B = A; can change A to A', use (A' ∈ (X ∷ (A' ∷ φ))) and transitivity of A' ≤ A & A = B ≤ B'
+typesubext {φ = φ} ϱ {.B} {B} {A'} {X = X} (Var (there here))          a'≤a b≤b' = SubType (Var (there here)) (≤-trans a'≤a b≤b')
+-- B ∈ (X ∷ (A ∷ φ)) => B is in φ, can simply extend φ with A' and X
+typesubext {φ = φ} ϱ {A} {B} {A'} {X = X}  (Var (there (there x)))     a'≤a b≤b' = SubType (Var (ϱ' x)) b≤b'
+  where
+    ϱ' : B ∈` φ → B ∈` (X ∷ A' ∷ φ)
+    ϱ' here                        = there (there (here))
+    ϱ' (there x)                   = there (there (there x))
+typesubext ϱ (SubType expr b''≤b) a'≤a b≤b' = typesubext ϱ expr a'≤a (≤-trans b''≤b b≤b')
+typesubext ϱ (Lab-I x) a'≤a b≤b'         = SubType (Lab-I x) b≤b'
+typesubext ϱ (Lab-E{snl = snl} expr cases) a'≤a b≤b' = Lab-E (typesubext ϱ expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesubext ϱ (cases l x) a'≤a b≤b'
+typesubext ϱ (Abs expr) a'≤a b≤b'        = SubType (Abs (typesubext {!!} {!!} {!!} {!!})) b≤b'
+typesubext ϱ (App expr expr₁) a'≤a b≤b'  = {!!}
+--}
+
+typesub : ∀ {nl φ φ' A B A' B'} → LExpr{nl} (φ' ++ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
+typesub {B = Tunit} Unit a'≤a Sunit                                             = Unit
+typesub {φ = φ} {φ' = []} {A} {.A} {A'} {B'} (Var here)           a'≤a b≤b'     = SubType (Var here) (≤-trans a'≤a b≤b')
+typesub {φ = φ} {φ' = []} {A} {B} {A'} {B'}  (Var (there x))      a'≤a b≤b'     = SubType (Var (ϱ x)) b≤b'
+  where
+    ϱ : B ∈` (φ) → B ∈` (A' ∷ φ)
+    ϱ here      = there (here)
+    ϱ (there x) = there (there x)         
+typesub {φ = φ} {x ∷ xs} {A} {.x} {A'} {B'} (Var here)      a'≤a b≤b'              = SubType (Var here) b≤b'
+typesub {φ = φ} {x ∷ []} {.B} {B} {A'} {B'} (Var (there here)) a'≤a b≤b'           = SubType (Var (there here)) (≤-trans a'≤a b≤b')
+typesub {φ = φ} {x ∷ []} {A} {B} {A'} {B'} (Var (there (there z))) a'≤a b≤b'       = SubType (Var (there (there z))) b≤b'
+typesub {φ = φ} {x ∷ x₁ ∷ xs} {A} {.x₁} {A'} {B'} (Var (there here)) a'≤a b≤b'    = SubType (Var (there here)) b≤b'
+typesub {φ = φ} {x ∷ x₁ ∷ xs} {A} {B} {A'} {B'} (Var (there (there z))) a'≤a b≤b' = {!!}
+{-- SubType (Var (there (ϱ{xs}{B}{A}{A'} z))) b≤b'
+  where
+    ϱ : ∀ {xs}{B}{A}{A'} → B ∈` (xs ++ A ∷ φ) → B ∈` (xs ++ A' ∷ φ)
+    ϱ {[]}{B}{.B} here      = {!!}
+    ϱ {[]} (there x)        = {!!}
+    ϱ {x₁ ∷ xs} x          = {!!}
+--}
+-- = SubType (Var (there (ϱ z))) b≤b'
+-- typesub{φ = φ} (Var z) a'≤a b≤b'
+typesub {nl} {φ} {φ'} (SubType expr x) a'≤a b≤b'                                = typesub{nl}{φ}{φ'} expr a'≤a (≤-trans x b≤b')
+typesub (Lab-I l∈snl) a'≤a b≤b'                                                 = SubType (Lab-I l∈snl) b≤b'
+typesub {nl} {φ} {φ'} (Lab-E{snl = snl} expr cases) a'≤a b≤b'                   = Lab-E (typesub{nl}{φ}{φ'} expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesub{nl}{φ}{φ'} (cases l x) a'≤a b≤b'
+typesub {φ' = φ'}{A = A}{B = A°→B°}{A' = A'}{B' = A°°→B°°} (Abs{A = A°} expr) a'≤a (Sfun{A = .A°}{A' = A°°}{B = B°}{B' = B°°} A°°≤A° B°≤B°°)
+                                                                                = SubType (Abs (typesub{φ' = A° ∷ φ'} expr a'≤a B°≤B°°)) (Sfun A°°≤A° (≤-refl B°°))
+typesub {nl}{φ}{φ'}{A}{B}{A'}{B'} (App{A = A°}{B = .B} expr expr') a'≤a b≤b'    = SubType (App (typesub{nl}{φ}{φ'} expr a'≤a (≤-refl (Tfun A° B))) (typesub{nl}{φ}{φ'} expr' a'≤a (≤-refl A°))) b≤b'
+
+
 -- We force values to have type SubType, since Lab-I results in expressions with type {l}
 -- and we want to keep the information about which subset l is in
 data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
   Vunit :  Val' (Tunit) Unit
   Vlab : ∀ {l snl l∈snl} → Val' (Tlabel snl) (Lab-I{l = l}{snl} l∈snl)
-  Vfun : ∀ {ty ty' A B ty≤A B≤ty' exp}
-         → Val' (Tfun ty ty') (SubType (Abs exp) (Sfun {n} {A} {ty} {B} ty≤A B≤ty'))
+  Vfun : ∀ {A B exp} → Val' (Tfun A B) (Abs exp)
 
 data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set where
 
@@ -182,11 +260,11 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
            → M ~> M'
            → App L M ~> App L M'
 
-  β-App : ∀ {A A' B B' A'≤A B≤B' exp M}
+  β-App : ∀ {A B M exp} 
           → Val' B M
-          → App ((SubType (Abs exp) (Sfun {n} {B'} {B} {A'} {A} B≤B' A'≤A))) M
+          → App{B = A} (Abs exp) M
              ~>
-             SubType (exp [[ SubType M B≤B' ]]) A'≤A
+             (exp [[ M ]])
 
   ξ-SubType : ∀ {A A' A≤A' } {L L' : LExpr φ A}
               → L ~> L'
@@ -206,10 +284,11 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                ~>
                Lab-I (snl⊆snl' l∈snl)
 
-  γ-Abs : ∀ {A B e}
-          → Abs{A = A} e
+  -- (Abs exp) : A → B <: A' → B' ~> Abs exp : A' → B'
+  γ-Abs : ∀ {A B A' B' e} {A'≤A : A' ≤ A} {B≤B' : B ≤ B'}
+          → SubType (Abs{B = B}{A = A} e) (Sfun A'≤A B≤B')
              ~>
-             SubType (Abs e) (≤-refl (Tfun A B))
+             Abs{B = B'}{A = A'} (typesub{φ' = []} e A'≤A B≤B')
 
   γ-SubType : ∀ {A A' A'' A≤A' A'≤A'' expr}
               → SubType{A = A'}{A' = A''} (SubType{A = A} expr A≤A') A'≤A''
@@ -258,9 +337,9 @@ progress (SubType (Lab-I{l}{snl} l∈snl) (Slabel{snl' = snl'} snl⊆snl'))     
 progress (SubType (Lab-E expr:A' x) A'≤A) with progress (Lab-E expr:A' x)
 ...                                           | step a                                    = step (ξ-SubType a)
 ...                                           | done ()                   -- Lab-E without SubType can't be a value
-progress (SubType (Abs expr:A') A'≤A) with progress (Abs expr:A')
+progress (SubType (Abs expr:A') (Sfun A'≤A B≤B')) with progress (Abs expr:A')
 ...                                           | step a                                    = step (ξ-SubType a)
-...                                           | done ()                   -- Abs wihout SubType can't be a value
+...                                           | done Vfun                                 = step γ-Abs
 progress (SubType (App expr:A' expr:A'') A'≤A) with progress (expr:A')
 ...                                           | step a                                    = step (ξ-SubType (ξ-App1 a))
 ...                                           | done Vfun with progress (expr:A'')
@@ -270,7 +349,7 @@ progress (Lab-I l∈snl)                                                        
 progress (Lab-E expr cases) with progress expr
 ...                                           | step expr~>expr'                          = step (ξ-Lab-E expr~>expr')
 ...                                           | done Vlab                                 = step (β-Lab-E)
-progress (Abs expr)                                                                       = step γ-Abs
+progress (Abs expr)                                                                       = done Vfun
 progress (App L M) with progress L
 ...                                           | step L~>L'                                = step (ξ-App1 L~>L')
 ...                                           | done Vfun with progress M
@@ -302,7 +381,7 @@ eval' (gas (suc m)) L with progress L
 
 
 -- TODO:
---      Non-reduction of values (not possible yet, see below)
+--      Proof of non-reduction of values
 --      Extract properties of ⊆
 --      Easier way to write down examples?
 
@@ -312,20 +391,11 @@ eval' (gas (suc m)) L with progress L
 ex0 : LExpr{suc zero} [] Tunit
 ex0 = App (Abs (Unit{φ = (Tunit ∷ [])})) (Unit)
 
--- PROBLEM: Term (SubType (Abs Unit) (Sfun Sunit Sunit)) is both a value AND can progress!
---          (a) Vfun
---          (b) ξ-SubType ~> (SubType (SubType (Abs Unit) (Sfun Sunit Sunit)) (Sfun Sunit Sunit))
---        => Automatic term evaluation stuck in an infinite ξ-SubType & γ-SubType loop
 _ : ex0 ~>> Unit
 _ =
   begin
     App (Abs (Unit)) (Unit)
-  ~>⟨ ξ-App1 γ-Abs ⟩
-    App (SubType (Abs Unit) (Sfun Sunit Sunit)) (Unit)
   ~>⟨ β-App (Vunit) ⟩
---    SubType (Unit{φ = (Tunit ∷ [])} [[ SubType Unit Sunit ]]) Sunit
-    SubType (Unit) Sunit
-  ~>⟨ β-SubType-Unit ⟩
     Unit
   ∎
 
@@ -338,7 +408,6 @@ _ =
   begin
     Lab-E (Lab-I (x∈⁅x⁆ zero)) (λ l x → Unit)
   ~>⟨ β-Lab-E ⟩
---    (λ l x → Unit) zero x∈⁅x⁆
     Unit
   ∎
 
@@ -352,18 +421,5 @@ boolmap (suc x) l∈snl  = {!!}
 ex2 : LExpr{5} [] Tunit
 ex2 = Lab-E (Lab-I (x∈⁅x⁆ zero)) {!!}
 --}
-
-
-
--- Notes
--- Following problem:
---                   * Subtyping allows Lab-I l∈snl to be put under any set snl' that contains l,
---                     which means the following case does not yield a Vlab since its definition
---                     requires the subset of Lab-I to be the same as the super type set
---                   * Changing the definition of Vlab as to allow any super set, not just the
---                     one used in Lab-I, will then make the application of β-Lab-E impossible,
---                     since cases maps from l∈snl' where snl' is from (Vlab : Tlabel snl'),
---                     β-Lab-E requires l∈snl = l∈snl' which does not always hold
---                   => FIX: Allow any super type, use proof of subtype in β-Lab-E for case function
 
     
