@@ -3,6 +3,7 @@ module LDLC where
 open import Data.List
 open import Data.List.All
 open import Data.List.Base
+open import Data.Vec hiding (_∈_) renaming (_++_ to _+++_)
 open import Data.Unit hiding (_≤_ ; poset)
 open import Data.Nat hiding (_≤_)
 open import Data.Fin.Subset
@@ -54,6 +55,7 @@ LTEnv nl = List (LTy nl)
 data _∈`_ {nl : ℕ} : LTy nl → LTEnv nl → Set where
   here  : ∀ {lt φ} → lt ∈` (lt ∷ φ)
   there : ∀ {lt lt' φ} → lt ∈` φ → lt ∈` (lt' ∷ φ)
+
 
 -- Expressions: Variables, Subtypes, Label Introduction & Elimination, Abstraction,
 --              Application
@@ -166,74 +168,58 @@ _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
   ϱ (there x) = Var x 
 
 -- Type substitution
--- typesub extension lemma: If we can substitute types such that LExpr (A ∷ φ) B becomes LExpr (A' ∷ φ) B',
---                          we can do the same with an environment extended by a variable
-{--
-typesubext : ∀ {nl φ A B A' B' X} → LExpr{nl} (X ∷ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (X ∷ (A' ∷ φ)) B'
-typesubext Unit a'≤a Sunit             = Unit
--- B ∈ (B ∷ (A ∷ φ)) => can change A to A' and use subtyping
-typesubext {A = A} {B = B} {X = .B}      (Var here)                  a'≤a b≤b' = SubType (Var here) b≤b'
--- B ∈ (X ∷ (A ∷ φ)) => B = A; can change A to A', use (A' ∈ (X ∷ (A' ∷ φ))) and transitivity of A' ≤ A & A = B ≤ B'
-typesubext {φ = φ} {.B} {B} {A'} {X = X} (Var (there here))          a'≤a b≤b' = SubType (Var (there here)) (≤-trans a'≤a b≤b')
--- B ∈ (X ∷ (A ∷ φ)) => B is in φ, can simply extend φ with A' and X
-typesubext {φ = φ} {A} {B} {A'} {X = X}  (Var (there (there x)))     a'≤a b≤b' = SubType (Var (ϱ' x)) b≤b'
-  where
-    ϱ' : B ∈` φ → B ∈` (X ∷ A' ∷ φ)
-    ϱ' here                        = there (there (here))
-    ϱ' (there x)                   = there (there (there x))
-typesubext (SubType expr b''≤b) a'≤a b≤b' = typesubext expr a'≤a (≤-trans b''≤b b≤b')
-typesubext (Lab-I x) a'≤a b≤b'         = SubType (Lab-I x) b≤b'
-typesubext (Lab-E{snl = snl} expr cases) a'≤a b≤b' = Lab-E (typesubext expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesubext (cases l x) a'≤a b≤b'
-typesubext {φ = φ} {A = A} {B = A°→B°} {A' = A'} {B' = A°°→B°°} {X = X} (Abs{A = .A°} expr) a'≤a (Sfun{A = A°}{A' = A°°}{B = B°}{B' = B°°} (a°°≤a°) (b°≤b°°))
- = {!!}
--- = SubType (Abs (typesubext{φ = φ}{A = X}{A' = X}{X = A''} (typesubext{φ = φ}{A = A}{B = B`}{A' = A'}{B' = B`}{X = X} expr a'≤a (≤-refl B`)) (≤-refl X) (≤-refl B`))) b≤b'
 
--- SubType (Abs (typesubext {!typesubext expr ? (≤-refl B)!} (≤-refl X) {!!})) b≤b'
-typesubext (App expr expr₁) a'≤a b≤b'  = {!!}
---}
-{--
-typesubext : ∀ {nl φ} → (∀ {A B A' B'} → LExpr{nl} (A ∷ φ) B → A' ≤ A → B ≤ B' → LExpr (A' ∷ φ) B')
-                      → (∀ {A B A' B' X} → LExpr{nl} (X ∷ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (X ∷ (A' ∷ φ)) B')
-typesubext ϱ Unit a'≤a Sunit             = Unit
--- B ∈ (B ∷ (A ∷ φ)) => can change A to A' and use subtyping
-typesubext ϱ {A = A} {B = B} {X = .B}      (Var here)                  a'≤a b≤b' = SubType (Var here) b≤b'
--- B ∈ (X ∷ (A ∷ φ)) => B = A; can change A to A', use (A' ∈ (X ∷ (A' ∷ φ))) and transitivity of A' ≤ A & A = B ≤ B'
-typesubext {φ = φ} ϱ {.B} {B} {A'} {X = X} (Var (there here))          a'≤a b≤b' = SubType (Var (there here)) (≤-trans a'≤a b≤b')
--- B ∈ (X ∷ (A ∷ φ)) => B is in φ, can simply extend φ with A' and X
-typesubext {φ = φ} ϱ {A} {B} {A'} {X = X}  (Var (there (there x)))     a'≤a b≤b' = SubType (Var (ϱ' x)) b≤b'
-  where
-    ϱ' : B ∈` φ → B ∈` (X ∷ A' ∷ φ)
-    ϱ' here                        = there (there (here))
-    ϱ' (there x)                   = there (there (there x))
-typesubext ϱ (SubType expr b''≤b) a'≤a b≤b' = typesubext ϱ expr a'≤a (≤-trans b''≤b b≤b')
-typesubext ϱ (Lab-I x) a'≤a b≤b'         = SubType (Lab-I x) b≤b'
-typesubext ϱ (Lab-E{snl = snl} expr cases) a'≤a b≤b' = Lab-E (typesubext ϱ expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesubext ϱ (cases l x) a'≤a b≤b'
-typesubext ϱ (Abs expr) a'≤a b≤b'        = SubType (Abs (typesubext {!!} {!!} {!!} {!!})) b≤b'
-typesubext ϱ (App expr expr₁) a'≤a b≤b'  = {!!}
---}
+-- Lemmas for '++' operator (actually not required, can work with def. of ++)
+-- if lt ∈` φ' then also lt ∈` (φ' ++ φ)
+expansionlemma : ∀ {nl} {lt : LTy nl} {φ φ'} → lt ∈` φ' → lt ∈` (φ' ++ φ)
+expansionlemma here      = here
+expansionlemma (there x) = there (expansionlemma x)
+
+-- if lt ∈` φ then also lt ∈` (φ' ++ φ)
+extensionlemma : ∀ {nl} {lt : LTy nl} {φ φ'} → lt ∈` φ → lt ∈` (φ' ++ φ)
+extensionlemma {φ' = []}        here     = here
+extensionlemma {φ' = x ∷ xs}   here     = there (extensionlemma{φ' = xs} here)
+extensionlemma {φ' = []}       (there y) = there y
+extensionlemma {φ' = x ∷ xs}  (there y) = there (extensionlemma {φ' = xs} (there y))
+
+{-
+-- if lt ∈` (φ' ++ (lt' ∷ φ)), then (lt ∈` φ' ∨ (lt = lt') ∨ lt ∈` φ)
+-- datatype
+data Lemm {nl : ℕ} : (lt : LTy nl) → (lt' : LTy nl) → (φ' : LTEnv nl) → (φ : LTEnv nl) → lt ∈` (φ' ++ (lt' ∷ φ)) → Set where
+  lt∈φ'  : ∀ {lt lt' φ' φ} → (x : lt ∈` φ')        → Lemm lt lt' φ' φ (expansionlemma x)
+  lt=lt' : ∀ {lt φ' φ}     → (x : lt ∈` (lt ∷ φ)) → Lemm lt lt φ' φ (extensionlemma{φ = lt ∷ φ}{φ' = φ'} x)
+  lt∈φ   : ∀ {lt lt' φ' φ} → (x : lt ∈` φ)         → Lemm lt lt' φ' φ (extensionlemma{φ = lt' ∷ φ}{φ' = φ'} (there x))
+-}
+
+lawl : ∀ {nl} {B A : LTy nl} {φ' φ} → B ∈` (φ' ++ φ) → B ∈` (φ' ++ (A ∷ φ))
+lawl {φ' = []} here           = there here
+lawl {φ' = []} (there x)      = there (there x)
+lawl {φ' = x ∷ xs} here      = here
+lawl {φ' = x ∷ xs} (there y) = there (lawl{φ' = xs} y)
+
+lulz : ∀ {nl} {φ φ'} {A B : LTy nl} → LExpr (φ' ++ φ) B → LExpr (φ' ++ (A ∷ φ)) B
+lulz Unit                                 = Unit
+lulz {φ' = φ'} (Var x)                    = Var (lawl{φ' = φ'} x)
+lulz {φ = φ}{φ' = φ'} (SubType expr b≤b') = SubType (lulz{φ = φ}{φ' = φ'} expr) b≤b'
+lulz (Lab-I x)                            = Lab-I x
+lulz {φ = φ} {φ' = φ'} (Lab-E x x₁)       = Lab-E (lulz{φ = φ}{φ' = φ'} x) λ l x₂ → lulz{φ = φ}{φ' = φ'} (x₁ l x₂)
+lulz {nl} {φ} {φ'} (Abs{A = A°} x)        = Abs (lulz{φ = φ}{φ' = A° ∷ φ'} x)
+lulz {φ = φ} {φ' = φ'} (App x x₁)         = App (lulz{φ = φ}{φ' = φ'} x) (lulz{φ = φ}{φ' = φ'} x₁)
+
+{- Direct substitution of _∈`_ not possible:
+lolz : ∀ {nl} {B A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ∈` (φ' ++ (A' ∷ φ))
+lolz {φ' = []}  here a'≤a          = :(  -- SubTyping required
+-}
+
+lolz : ∀ {nl} {B B' A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
+lolz {φ' = []}  here a'≤a b≤b'          = SubType (Var here) (≤-trans a'≤a b≤b')
+lolz {φ' = []} (there x) a'≤a b≤b'      = SubType (Var (there x)) b≤b'
+lolz {φ' = x ∷ xs} here a'≤a b≤b'      = SubType (Var (here)) b≤b'
+lolz {φ' = x ∷ xs} (there z) a'≤a b≤b' = lulz{φ' = []}{A = x} (lolz{φ' = xs} z a'≤a b≤b')
 
 typesub : ∀ {nl φ φ' A B A' B'} → LExpr{nl} (φ' ++ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
-typesub {B = Tunit} Unit a'≤a Sunit                                             = Unit
-typesub {φ = φ} {φ' = []} {A} {.A} {A'} {B'} (Var here)           a'≤a b≤b'     = SubType (Var here) (≤-trans a'≤a b≤b')
-typesub {φ = φ} {φ' = []} {A} {B} {A'} {B'}  (Var (there x))      a'≤a b≤b'     = SubType (Var (ϱ x)) b≤b'
-  where
-    ϱ : B ∈` (φ) → B ∈` (A' ∷ φ)
-    ϱ here      = there (here)
-    ϱ (there x) = there (there x)         
-typesub {φ = φ} {x ∷ xs} {A} {.x} {A'} {B'} (Var here)      a'≤a b≤b'              = SubType (Var here) b≤b'
-typesub {φ = φ} {x ∷ []} {.B} {B} {A'} {B'} (Var (there here)) a'≤a b≤b'           = SubType (Var (there here)) (≤-trans a'≤a b≤b')
-typesub {φ = φ} {x ∷ []} {A} {B} {A'} {B'} (Var (there (there z))) a'≤a b≤b'       = SubType (Var (there (there z))) b≤b'
-typesub {φ = φ} {x ∷ x₁ ∷ xs} {A} {.x₁} {A'} {B'} (Var (there here)) a'≤a b≤b'    = SubType (Var (there here)) b≤b'
-typesub {φ = φ} {x ∷ x₁ ∷ xs} {A} {B} {A'} {B'} (Var (there (there z))) a'≤a b≤b' = {!!}
-{-- SubType (Var (there (ϱ{xs}{B}{A}{A'} z))) b≤b'
-  where
-    ϱ : ∀ {xs}{B}{A}{A'} → B ∈` (xs ++ A ∷ φ) → B ∈` (xs ++ A' ∷ φ)
-    ϱ {[]}{B}{.B} here      = {!!}
-    ϱ {[]} (there x)        = {!!}
-    ϱ {x₁ ∷ xs} x          = {!!}
---}
--- = SubType (Var (there (ϱ z))) b≤b'
--- typesub{φ = φ} (Var z) a'≤a b≤b'
+typesub {B = Tunit} Unit a'≤a Sunit = Unit
+typesub {φ = φ} {φ'} {A} {B} {A'} {B'} (Var x) a'≤a b≤b' = lolz{φ' = φ'}{φ = φ} x a'≤a b≤b'
 typesub {nl} {φ} {φ'} (SubType expr x) a'≤a b≤b'                                = typesub{nl}{φ}{φ'} expr a'≤a (≤-trans x b≤b')
 typesub (Lab-I l∈snl) a'≤a b≤b'                                                 = SubType (Lab-I l∈snl) b≤b'
 typesub {nl} {φ} {φ'} (Lab-E{snl = snl} expr cases) a'≤a b≤b'                   = Lab-E (typesub{nl}{φ}{φ'} expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesub{nl}{φ}{φ'} (cases l x) a'≤a b≤b'
@@ -410,6 +396,25 @@ _ =
   ~>⟨ β-Lab-E ⟩
     Unit
   ∎
+
+ex2 : LExpr{suc zero} [] Tunit
+ex2 = App (SubType (Abs Unit) (Sfun Sunit Sunit)) Unit
+
+-- proof that {inside, outside} ⊆ {inside, inside}
+-- i.e.                     {0} ⊆ {0, 1}
+x⊆y : (inside ∷ outside ∷ []) ⊆ (inside ∷ inside ∷ [])
+x⊆y {.zero}    here      = here
+x⊆y {.(suc (suc _))} (there (there ()))
+
+-- proof that zero is in (inside ∷ outside ∷ [])
+-- i.e.                    0 ∈ {0}
+l∈snl : (zero) ∈ (inside ∷ outside ∷ [])
+l∈snl = here
+
+-- [({0, 1}→{0, 1} <: {0}→{0, 1}) (λ x : {0, 1} . x)] 0
+ex3 : LExpr{suc (suc zero)} [] (Tlabel (inside ∷ inside ∷ []))
+ex3 = App (SubType (Abs{A = Tlabel (inside ∷ inside ∷ [])}  (Var here)) (Sfun (Slabel{snl = (inside ∷ outside ∷ [])} x⊆y) (≤-refl (Tlabel (inside ∷ inside ∷ [])))))
+          (Lab-I l∈snl)
 
 
 -- Boolean mapping to 4 for true, 2 for false
