@@ -182,21 +182,14 @@ extensionlemma {φ' = x ∷ xs}   here     = there (extensionlemma{φ' = xs} her
 extensionlemma {φ' = []}       (there y) = there y
 extensionlemma {φ' = x ∷ xs}  (there y) = there (extensionlemma {φ' = xs} (there y))
 
-{-
--- if lt ∈` (φ' ++ (lt' ∷ φ)), then (lt ∈` φ' ∨ (lt = lt') ∨ lt ∈` φ)
--- datatype
-data Lemm {nl : ℕ} : (lt : LTy nl) → (lt' : LTy nl) → (φ' : LTEnv nl) → (φ : LTEnv nl) → lt ∈` (φ' ++ (lt' ∷ φ)) → Set where
-  lt∈φ'  : ∀ {lt lt' φ' φ} → (x : lt ∈` φ')        → Lemm lt lt' φ' φ (expansionlemma x)
-  lt=lt' : ∀ {lt φ' φ}     → (x : lt ∈` (lt ∷ φ)) → Lemm lt lt φ' φ (extensionlemma{φ = lt ∷ φ}{φ' = φ'} x)
-  lt∈φ   : ∀ {lt lt' φ' φ} → (x : lt ∈` φ)         → Lemm lt lt' φ' φ (extensionlemma{φ = lt' ∷ φ}{φ' = φ'} (there x))
--}
-
+-- Extension lemma inside a list for De Bruijn indices
 inextdebr : ∀ {nl} {B A : LTy nl} {φ' φ} → B ∈` (φ' ++ φ) → B ∈` (φ' ++ (A ∷ φ))
 inextdebr {φ' = []} here           = there here
 inextdebr {φ' = []} (there x)      = there (there x)
 inextdebr {φ' = x ∷ xs} here      = here
 inextdebr {φ' = x ∷ xs} (there y) = there (inextdebr{φ' = xs} y)
 
+-- Extension lemma inside a list for expressions
 inext : ∀ {nl} {φ φ'} {A B : LTy nl} → LExpr (φ' ++ φ) B → LExpr (φ' ++ (A ∷ φ)) B
 inext Unit                                 = Unit
 inext {φ' = φ'} (Var x)                    = Var (inextdebr{φ' = φ'} x)
@@ -210,15 +203,16 @@ inext {φ = φ} {φ' = φ'} (App x x₁)         = App (inext{φ = φ}{φ' = φ'
 lolz : ∀ {nl} {B A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ∈` (φ' ++ (A' ∷ φ))
 lolz {φ' = []}  here a'≤a          = :(  -- SubTyping required
 -}
-
+-- Type substitution for De Bruijn indices
 debrsub : ∀ {nl} {B B' A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
 debrsub {φ' = []}  here a'≤a b≤b'          = SubType (Var here) (≤-trans a'≤a b≤b')
 debrsub {φ' = []} (there x) a'≤a b≤b'      = SubType (Var (there x)) b≤b'
 debrsub {φ' = x ∷ xs} here a'≤a b≤b'      = SubType (Var (here)) b≤b'
 debrsub {φ' = x ∷ xs} (there z) a'≤a b≤b' = inext{φ' = []}{A = x} (debrsub{φ' = xs} z a'≤a b≤b')
 
+-- Type substitution required for Abs SubTypes
 typesub : ∀ {nl φ φ' A B A' B'} → LExpr{nl} (φ' ++ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
-typesub {B = Tunit} Unit a'≤a Sunit = Unit
+typesub Unit a'≤a Sunit = Unit
 typesub {φ = φ} {φ'} {A} {B} {A'} {B'} (Var x) a'≤a b≤b'                        = debrsub{φ' = φ'}{φ = φ} x a'≤a b≤b'
 typesub {nl} {φ} {φ'} (SubType expr x) a'≤a b≤b'                                = typesub{nl}{φ}{φ'} expr a'≤a (≤-trans x b≤b')
 typesub (Lab-I l∈snl) a'≤a b≤b'                                                 = SubType (Lab-I l∈snl) b≤b'
@@ -366,12 +360,6 @@ eval' (gas (suc m)) L with progress L
 ...         | steps M~>>N fin   = steps (L ~>⟨ L~>M ⟩ M~>>N) fin 
 
 
--- TODO:
---      Proof of non-reduction of values
---      Extract properties of ⊆
---      Easier way to write down examples?
-
-
 -- Examples
 -- (λ (x : Unit) → x) (Unit)
 ex0 : LExpr{suc zero} [] Tunit
@@ -416,6 +404,4 @@ ex3 : LExpr{suc (suc zero)} [] (Tlabel (inside ∷ inside ∷ []))
 ex3 = App (SubType (Abs{A = Tlabel (inside ∷ inside ∷ [])}  (Var here)) (Sfun (Slabel{snl = (inside ∷ outside ∷ [])} x⊆y) (≤-refl (Tlabel (inside ∷ inside ∷ [])))))
           (Lab-I l∈snl)
 
-
--- Boolean mapping to 4 for true, 2 for false
 
