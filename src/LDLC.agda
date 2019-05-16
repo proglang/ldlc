@@ -191,35 +191,35 @@ data Lemm {nl : ℕ} : (lt : LTy nl) → (lt' : LTy nl) → (φ' : LTEnv nl) →
   lt∈φ   : ∀ {lt lt' φ' φ} → (x : lt ∈` φ)         → Lemm lt lt' φ' φ (extensionlemma{φ = lt' ∷ φ}{φ' = φ'} (there x))
 -}
 
-lawl : ∀ {nl} {B A : LTy nl} {φ' φ} → B ∈` (φ' ++ φ) → B ∈` (φ' ++ (A ∷ φ))
-lawl {φ' = []} here           = there here
-lawl {φ' = []} (there x)      = there (there x)
-lawl {φ' = x ∷ xs} here      = here
-lawl {φ' = x ∷ xs} (there y) = there (lawl{φ' = xs} y)
+inextdebr : ∀ {nl} {B A : LTy nl} {φ' φ} → B ∈` (φ' ++ φ) → B ∈` (φ' ++ (A ∷ φ))
+inextdebr {φ' = []} here           = there here
+inextdebr {φ' = []} (there x)      = there (there x)
+inextdebr {φ' = x ∷ xs} here      = here
+inextdebr {φ' = x ∷ xs} (there y) = there (inextdebr{φ' = xs} y)
 
-lulz : ∀ {nl} {φ φ'} {A B : LTy nl} → LExpr (φ' ++ φ) B → LExpr (φ' ++ (A ∷ φ)) B
-lulz Unit                                 = Unit
-lulz {φ' = φ'} (Var x)                    = Var (lawl{φ' = φ'} x)
-lulz {φ = φ}{φ' = φ'} (SubType expr b≤b') = SubType (lulz{φ = φ}{φ' = φ'} expr) b≤b'
-lulz (Lab-I x)                            = Lab-I x
-lulz {φ = φ} {φ' = φ'} (Lab-E x x₁)       = Lab-E (lulz{φ = φ}{φ' = φ'} x) λ l x₂ → lulz{φ = φ}{φ' = φ'} (x₁ l x₂)
-lulz {nl} {φ} {φ'} (Abs{A = A°} x)        = Abs (lulz{φ = φ}{φ' = A° ∷ φ'} x)
-lulz {φ = φ} {φ' = φ'} (App x x₁)         = App (lulz{φ = φ}{φ' = φ'} x) (lulz{φ = φ}{φ' = φ'} x₁)
+inext : ∀ {nl} {φ φ'} {A B : LTy nl} → LExpr (φ' ++ φ) B → LExpr (φ' ++ (A ∷ φ)) B
+inext Unit                                 = Unit
+inext {φ' = φ'} (Var x)                    = Var (inextdebr{φ' = φ'} x)
+inext {φ = φ}{φ' = φ'} (SubType expr b≤b') = SubType (inext{φ = φ}{φ' = φ'} expr) b≤b'
+inext (Lab-I x)                            = Lab-I x
+inext {φ = φ} {φ' = φ'} (Lab-E x x₁)       = Lab-E (inext{φ = φ}{φ' = φ'} x) λ l x₂ → inext{φ = φ}{φ' = φ'} (x₁ l x₂)
+inext {nl} {φ} {φ'} (Abs{A = A°} x)        = Abs (inext{φ = φ}{φ' = A° ∷ φ'} x)
+inext {φ = φ} {φ' = φ'} (App x x₁)         = App (inext{φ = φ}{φ' = φ'} x) (inext{φ = φ}{φ' = φ'} x₁)
 
 {- Direct substitution of _∈`_ not possible:
 lolz : ∀ {nl} {B A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ∈` (φ' ++ (A' ∷ φ))
 lolz {φ' = []}  here a'≤a          = :(  -- SubTyping required
 -}
 
-lolz : ∀ {nl} {B B' A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
-lolz {φ' = []}  here a'≤a b≤b'          = SubType (Var here) (≤-trans a'≤a b≤b')
-lolz {φ' = []} (there x) a'≤a b≤b'      = SubType (Var (there x)) b≤b'
-lolz {φ' = x ∷ xs} here a'≤a b≤b'      = SubType (Var (here)) b≤b'
-lolz {φ' = x ∷ xs} (there z) a'≤a b≤b' = lulz{φ' = []}{A = x} (lolz{φ' = xs} z a'≤a b≤b')
+debrsub : ∀ {nl} {B B' A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
+debrsub {φ' = []}  here a'≤a b≤b'          = SubType (Var here) (≤-trans a'≤a b≤b')
+debrsub {φ' = []} (there x) a'≤a b≤b'      = SubType (Var (there x)) b≤b'
+debrsub {φ' = x ∷ xs} here a'≤a b≤b'      = SubType (Var (here)) b≤b'
+debrsub {φ' = x ∷ xs} (there z) a'≤a b≤b' = inext{φ' = []}{A = x} (debrsub{φ' = xs} z a'≤a b≤b')
 
 typesub : ∀ {nl φ φ' A B A' B'} → LExpr{nl} (φ' ++ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
 typesub {B = Tunit} Unit a'≤a Sunit = Unit
-typesub {φ = φ} {φ'} {A} {B} {A'} {B'} (Var x) a'≤a b≤b' = lolz{φ' = φ'}{φ = φ} x a'≤a b≤b'
+typesub {φ = φ} {φ'} {A} {B} {A'} {B'} (Var x) a'≤a b≤b'                        = debrsub{φ' = φ'}{φ = φ} x a'≤a b≤b'
 typesub {nl} {φ} {φ'} (SubType expr x) a'≤a b≤b'                                = typesub{nl}{φ}{φ'} expr a'≤a (≤-trans x b≤b')
 typesub (Lab-I l∈snl) a'≤a b≤b'                                                 = SubType (Lab-I l∈snl) b≤b'
 typesub {nl} {φ} {φ'} (Lab-E{snl = snl} expr cases) a'≤a b≤b'                   = Lab-E (typesub{nl}{φ}{φ'} expr a'≤a (≤-refl (Tlabel snl))) λ l x → typesub{nl}{φ}{φ'} (cases l x) a'≤a b≤b'
@@ -418,13 +418,4 @@ ex3 = App (SubType (Abs{A = Tlabel (inside ∷ inside ∷ [])}  (Var here)) (Sfu
 
 
 -- Boolean mapping to 4 for true, 2 for false
-{--
-boolmap : ∀ {snl : Subset 2} {snl' : Subset 5} → (∀ l → l ∈ snl → LExpr [] (Tlabel snl'))
-boolmap {snl'} zero  l∈snl  = (Lab-I ((fromℕ 2) ∈ snl'))
-boolmap (suc x) l∈snl  = {!!}
 
-ex2 : LExpr{5} [] Tunit
-ex2 = Lab-E (Lab-I (x∈⁅x⁆ zero)) {!!}
---}
-
-    
