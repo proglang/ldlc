@@ -3,8 +3,8 @@ module LDLC where
 open import Data.List
 open import Data.List.All
 open import Data.List.Base
-open import Data.Vec hiding (_∈_) renaming (_++_ to _+++_)
-open import Data.Unit hiding (_≤_ ; poset)
+open import Data.Vec hiding (_++_)
+open import Data.Unit hiding (_≤_)
 open import Data.Nat hiding (_≤_)
 open import Data.Fin.Subset
 open import Data.Fin.Subset.Properties
@@ -25,16 +25,6 @@ data _≤_ {nl} : LTy nl → LTy nl → Set where
   Slabel : ∀ {snl snl'} → snl ⊆ snl' → (Tlabel snl) ≤ (Tlabel snl')
   Sfun   : ∀ {A A' B B'} → A' ≤ A → B ≤ B' → (Tfun A B) ≤ (Tfun A' B')
 
------ Properties
--- Transitivity, reflexivity of ⊆ (the one in Data.Fin.Subset.Properties ?)
-⊆-trans : ∀ {nl} {snl snl' snl'' : Subset nl} → snl ⊆ snl' → snl' ⊆ snl'' → snl ⊆ snl''
-⊆-trans snl⊆snl' snl'⊆snl'' = λ x → snl'⊆snl'' (snl⊆snl' x)
--- snl⊆snl'   = ∀ {x} → x ∈ snl → x ∈ snl'
--- snl'⊆snl'' = ∀ {x} → x ∈ snl' → x ∈ snl''
-
-⊆-refl : ∀ {nl} → (snl : Subset nl) → snl ⊆ snl
-⊆-refl snl = λ x → x
-
 -- Transitivity, reflexivity of ≤
 ≤-trans : ∀ {nl} {t t' t'' : LTy nl} → t ≤ t' → t' ≤ t'' → t ≤ t''
 ≤-trans Sunit Sunit = Sunit 
@@ -43,7 +33,7 @@ data _≤_ {nl} : LTy nl → LTy nl → Set where
 
 ≤-refl : ∀ {nl} → (t : LTy nl) → t ≤ t
 ≤-refl Tunit = Sunit
-≤-refl (Tlabel x) = Slabel (⊆-refl x)
+≤-refl (Tlabel x) = Slabel (⊆-refl)
 ≤-refl (Tfun t t') = Sfun (≤-refl t) (≤-refl t')
 -----
 
