@@ -151,7 +151,6 @@ data _↠_ {φ} : {A : Type} → Expr φ A → Expr φ A → Set where
                → Value' Nat n
                → NatRec Ez Es (S n) ↠ (Es [[ NatRec Ez Es n ]])
 
--- TODO: Progress theorem, Generation of evaluation sequences
 ----- Reflexive & Transitive closure of ↠; defined for chain reasoning
 infix 1 begin_
 infix 2 _⇨_
