@@ -1,11 +1,11 @@
 module Alg where
 
 open import Data.Bool
-open import Data.Fin hiding (_+_)
+open import Data.Fin hiding (_+_ ; fold)
 open import Data.List hiding (lookup ; [_] ; map)
 open import Data.Nat
 open import Data.Product hiding (map)
-open import Data.Vec
+open import Data.Vec hiding (_++_)
 
 open import Size
 
@@ -117,4 +117,68 @@ tNat1 = mk (suc zero) [ tNat0 ]
 tNat2 : Term rNat
 tNat2 = mk (suc zero) [ tNat1 ]
 
+aNatTerm : Algebra rNat (Term rNat)
+aNatTerm = mk
 
+----------------------------------------------------------------------
+-- many-sorted algebra
+
+open import Data.Unit
+open import Data.Nat.GeneralisedArithmetic
+
+Sorts = Fin
+
+Signature : ℕ → ℕ → Set
+Signature s = Vec (List (Sorts s) × Sorts s)
+
+sNat : Signature 1 2
+sNat = ([] , zero) ∷ (( zero ∷ []) , zero) ∷ []
+
+sMon : Signature 2 6
+sMon = ([] , zero) ∷ (zero ∷ [] , zero) ∷
+       ([] , suc zero) ∷ (suc zero ∷ [] , suc zero) ∷ (suc zero ∷ [] , suc zero) ∷ 
+       (zero ∷ suc zero ∷ [] , suc zero) ∷ []
+-- this is:   0. S. eps. 0(). 1(). n*s.
+
+sary : ∀ {s} → (Sorts s → Set) → List (Sorts s) → Set
+sary int [] = ⊤
+sary int (sort ∷ sort*) = int sort × sary int sort*
+
+data STerm {s} {n} (sig : Signature s n) : Sorts s → Set where
+  mk : (sym : Fin n) →
+    let (sort* , sort) = lookup sym sig in
+    sary (STerm sig) sort* →
+    STerm sig sort
+
+sNat0 : STerm sNat zero
+sNat0 = mk zero tt
+
+sNat1 : STerm sNat zero
+sNat1 = mk (suc zero) (sNat0 , tt)
+
+SAlgebra : ∀ {s n} → Signature s n → (Sorts s → Set) → Set
+SAlgebra sig int = (sym : Fin _) →
+    let (sort* , sort) = lookup sym sig in
+    sary int sort* → int sort
+
+asNat : SAlgebra sNat λ zero → ℕ
+asNat zero = λ{ tt → 0 }
+asNat (suc zero) = λ{ (x , tt) → suc x }
+asNat (suc (suc ()))
+
+asNatTerm : SAlgebra sNat (STerm sNat)
+asNatTerm = mk
+{- written out:
+asNatTerm zero = mk zero
+asNatTerm (suc zero) = mk (suc zero) 
+asNatTerm (suc (suc ()))
+-}
+
+asMon : SAlgebra sMon λ{ zero → ℕ ; (suc zero) → List Bool ; (suc (suc ())) }
+asMon zero tt = 0
+asMon (suc zero) (n , _) = suc n
+asMon (suc (suc zero)) tt = []
+asMon (suc (suc (suc zero))) (w , _) = true ∷ w
+asMon (suc (suc (suc (suc zero)))) (w , _) = false ∷ w
+asMon (suc (suc (suc (suc (suc zero))))) (n , w , _) = fold [] (_++_ w) n
+asMon (suc (suc (suc (suc (suc (suc ())))))) x
