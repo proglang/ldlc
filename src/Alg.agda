@@ -27,7 +27,7 @@ rBtr = zero ∷ suc (suc zero) ∷ []
 module FailedAttempt where
   -- terms
   data Term {n} (ra : RankedAlphabet n) : Set where
-    mk : (sym : Fin n) → (Fin (lookup sym ra) → Term ra) → Term ra
+    mk : (sym : Fin n) → (Fin (lookup ra sym) → Term ra) → Term ra
 
   tNat0 : Term rNat
   tNat0 = mk zero (λ ())
@@ -44,7 +44,7 @@ module FailedAttempt where
   nary A (suc n) = A → nary A n
   
   Algebra : ∀ {n} → RankedAlphabet n → Set → Set
-  Algebra {n} ra A = (sym : Fin n) → nary A (lookup sym ra)
+  Algebra {n} ra A = (sym : Fin n) → nary A (lookup ra sym)
   
   -- I don't see how to implement this as a function
   postulate 
@@ -57,7 +57,7 @@ nary : Set → ℕ → Set
 nary A n = Vec A n → A
 
 Algebra : ∀ {n} → RankedAlphabet n → Set → Set
-Algebra {n} ra A = (sym : Fin n) → nary A (lookup sym ra)
+Algebra {n} ra A = (sym : Fin n) → nary A (lookup ra sym)
 
 -- natural numbers
 aNat : Algebra rNat ℕ
@@ -68,8 +68,8 @@ aNat (suc (suc ()))
 -- bitstrings
 aBin : Algebra rBin (List Bool)
 aBin zero = λ _ → []
-aBin (suc zero) = λ x → false ∷ lookup zero x
-aBin (suc (suc zero)) = λ x → true ∷ lookup zero x
+aBin (suc zero) = λ x → false ∷ lookup x zero
+aBin (suc (suc zero)) = λ x → true ∷ lookup x zero
 aBin (suc (suc (suc ())))
 
 -- compute value of bitstring
@@ -103,7 +103,7 @@ aBtrHeight (suc (suc ()))
 
 -- terms (using sized types)
 data Term {n} (ra : RankedAlphabet n) : {i : Size} → Set where
-  mk : ∀ {i} → (sym : Fin n) → Vec (Term ra {i}) (lookup sym ra) → Term ra {↑ i}
+  mk : ∀ {i} → (sym : Fin n) → Vec (Term ra {i}) (lookup ra sym) → Term ra {↑ i}
 
 eval : ∀ {n} {ra : RankedAlphabet n} {A} {i} → Algebra ra A → Term ra {i} → A
 eval alg (mk sym subterms) = alg sym (map (eval alg) subterms)
@@ -146,7 +146,7 @@ sary int (sort ∷ sort*) = int sort × sary int sort*
 
 data STerm {s} {n} (sig : Signature s n) : Sorts s → Set where
   mk : (sym : Fin n) →
-    let (sort* , sort) = lookup sym sig in
+    let (sort* , sort) = lookup sig sym in
     sary (STerm sig) sort* →
     STerm sig sort
 
@@ -158,7 +158,7 @@ sNat1 = mk (suc zero) (sNat0 , tt)
 
 SAlgebra : ∀ {s n} → Signature s n → (Sorts s → Set) → Set
 SAlgebra sig int = (sym : Fin _) →
-    let (sort* , sort) = lookup sym sig in
+    let (sort* , sort) = lookup sig sym in
     sary int sort* → int sort
 
 asNat : SAlgebra sNat λ zero → ℕ
