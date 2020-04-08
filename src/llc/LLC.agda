@@ -3,7 +3,7 @@
 module LLC where
 
 open import Data.List
-open import Data.List.All
+open import Data.List.Relation.Unary.All
 open import Data.List.Base
 open import Data.Vec hiding (_++_)
 open import Data.Unit hiding (_≤_)
@@ -178,7 +178,7 @@ data Val' {n φ} : (t : Ty n) → Exp {n} φ t → Set where
   Vlab : ∀ {l snl l∈snl} → Val' (Tlabel snl) (Lab-I{l = l}{snl} l∈snl)
   Vfun : ∀ {A B exp} → Val' (Tfun A B) (Abs exp)
 
-data _~>_ {n φ} : {A : Ty n} → Exp {n} φ A → Exp {n} φ A → Set where  -- small-steps semantics relation
+data _~>_ {n φ} : {A : Ty n} → Exp {n} φ A → Exp {n} φ A → Set where  -- small-steps semantics relation (call-by-value)
 
   ξ-App1 : ∀ {A B} {L L' : (Exp φ (Tfun B A))} {M}
            → L ~> L'
