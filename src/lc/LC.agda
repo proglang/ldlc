@@ -3,11 +3,14 @@
 module LC where
 
 open import Agda.Primitive
+open import Data.Empty
 open import Data.Nat
+open import Data.Nat.Properties
 open import Data.List
 open import Data.List.Relation.Unary.All
 open import Agda.Builtin.Bool
 open import Relation.Binary.PropositionalEquality
+open import Relation.Nullary using (¬_)
 
 -- definitions
 
@@ -100,12 +103,33 @@ progress (App e e₁) {T} {TApp{T₁ = T₁}{T₂ = .T} j j₁} with progress e 
 ...    | step x₁ = step (ξ-App2 VFun x₁)
 ...    | value x₁ = step (β-App x₁)
 
+-- a natural number cannot be unequal to itself
+¬n≢n : {n : ℕ} → (n ≢ n) → ⊥
+¬n≢n {n} x = {!!}
+
+-- weaken, if (n : T ∈ Γ), then (n : T ∈ (Γ , m ∶ S)) for m ≠ n
+weaken : {n m : ℕ} {T S : Ty} {Γ : Env} → n ≢ m → n ∶ T ∈ Γ → n ∶ T ∈ (Γ , m ∶ S)
+weaken {n} {m} {T} {S} {(Γ , n ∶ T)} neq here = there neq here
+weaken {n} {m} {T} {S} {(_ , _ ∶ _)} neq (there neq' j) = there neq (there neq' j)
+
+-- strengthen, the opposite of weaken
+strengthen : {n m : ℕ} {T S : Ty} {Γ : Env} → n ≢ m → n ∶ T ∈ (Γ , m ∶ S) → n ∶ T ∈ Γ
+strengthen {n} {.n} {T} {.T} n≢n here = {!!}  -- n≢n is impossible
+strengthen {n} {m} {T} {S} {Γ} n≢m (there neq j) = j
+
+-- preservation under substitution
+preserve-subst : {T S : Ty} {Γ : Env} {e s : Exp} (j : (Γ , 0 ∶ S) ⊢ e ∶ T) (j' : Γ ⊢ s ∶ S) → Γ ⊢ ([ 0 ↦ s ] e) ∶ T
+preserve-subst (TVar {zero} here) j' = j'
+preserve-subst (TVar {zero} (there 0≢0 j)) j' = {!!}  -- 0≢0 is impossible
+preserve-subst (TVar {suc n} x) j' = TVar (strengthen{suc n}{0} 1+n≢0 x)
+preserve-subst (TAbs j) j' = {!!}
+preserve-subst (TApp j j₁) j' = {!!}
 
 -- preservation theorem, i.e. a well-typed expression reduces to a well-typed expression
 preserve : {T : Ty} {Γ : Env} (e e' : Exp) (j : Γ ⊢ e ∶ T) (r : e ⇒ e') → Γ ⊢ e' ∶ T
 preserve (App s₁ s₂) .(App _ s₂) (TApp j j') (ξ-App1{e₁' = s₁'} r) = TApp (preserve s₁ s₁' j r) j' -- IH on inner reduction
 preserve (App s₁ s₂) .(App s₁ _) (TApp j j') (ξ-App2{e' = s₂'} x r) = TApp j (preserve s₂ s₂' j' r)
-preserve (App (Abs e) s') .([ 0 ↦ s' ] e) (TApp (TAbs j) j') (β-App x) = {!!}
+preserve (App (Abs e) s') .([ 0 ↦ s' ] e) (TApp (TAbs j) j') (β-App x) = preserve-subst j j'
 
 
 
