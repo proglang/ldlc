@@ -3,14 +3,15 @@
 module LC where
 
 open import Agda.Primitive
+open import Agda.Builtin.Bool
 open import Data.Empty
 open import Data.Nat
 open import Data.Nat.Properties
+open import Data.Integer
 open import Data.List
 open import Data.List.Relation.Unary.All
-open import Agda.Builtin.Bool
 open import Relation.Binary.PropositionalEquality
-open import Relation.Nullary using (¬_)
+open import Relation.Nullary.Negation
 
 -- definitions
 
@@ -39,7 +40,7 @@ data _⊢_∶_ : Env → Exp → Ty → Set where
 
 -- denotational semantics
 
--- extract a list of types
+-- extract a list of types from env
 Env2List : Env → List Ty
 Env2List ∅ = []
 Env2List (Γ , x ∶ T) = T ∷ (Env2List Γ)
@@ -61,11 +62,11 @@ eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
 
 -- shifting, required to avoid variable-capturing in substitution
 -- see Pierce 2002, pg. 78/79
-↑_,_[_] : ℕ → ℕ → Exp → Exp
-↑ d , c [ Var x ] with (_<ᵇ_ x c)
+↑_,_[_] : ℤ → ℕ → Exp → Exp
+↑ d , c [ Var x ] with (x <ᵇ c)
+... | false = Var (∣ (ℤ.pos x) Data.Integer.+ d ∣)  -- should always be positive anyway
 ... | true = Var x
-... | false = Var (x + d)
-↑ d , c [ Abs t ] = Abs (↑ d , (suc c) [ t ])
+↑ d , c [ Abs t ] = Abs (↑ d , (ℕ.suc c) [ t ])
 ↑ d , c [ App t t₁ ] = App (↑ d , c [ t ]) (↑ d , c [ t₁ ])
 
 -- substitution
@@ -74,7 +75,7 @@ eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
 [ k ↦ s ] Var x with (_≡ᵇ_ x k)
 ... | false = Var x
 ... | true = s
-[ k ↦ s ] Abs t = Abs ([ suc k ↦ ↑ 1 , 0 [ s ] ] t)
+[ k ↦ s ] Abs t = Abs ([ ℕ.suc k ↦ ↑ (ℤ.pos 1) , 0 [ s ] ] t)
 [ k ↦ s ] App t t₁ = App ([ k ↦ s ] t) ([ k ↦ s ] t₁)
 
 
@@ -85,7 +86,7 @@ data Val : Exp → Set where
 data _⇒_ : Exp → Exp → Set where
   ξ-App1 : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → App e₁ e₂ ⇒ App e₁' e₂
   ξ-App2 : {e e' v : Exp} → Val v → e ⇒ e' → App v e ⇒ App v e'
-  β-App : {e v : Exp} → Val v → (App (Abs e) v) ⇒ ([ 0 ↦ v ] e)
+  β-App : {e v : Exp} → Val v → (App (Abs e) v) ⇒ (↑ (ℤ.negsuc 0) , 0 [ ([ 0 ↦ ↑ (ℤ.pos 1) , 0 [ v ] ] e) ])
 
 
 -- progress theorem, i.e. all well-typed closed expressions are either a value
@@ -103,10 +104,6 @@ progress (App e e₁) {T} {TApp{T₁ = T₁}{T₂ = .T} j j₁} with progress e 
 ...    | step x₁ = step (ξ-App2 VFun x₁)
 ...    | value x₁ = step (β-App x₁)
 
--- a natural number cannot be unequal to itself
-¬n≢n : {n : ℕ} → (n ≢ n) → ⊥
-¬n≢n {n} x = {!!}
-
 -- weaken, if (n : T ∈ Γ), then (n : T ∈ (Γ , m ∶ S)) for m ≠ n
 weaken : {n m : ℕ} {T S : Ty} {Γ : Env} → n ≢ m → n ∶ T ∈ Γ → n ∶ T ∈ (Γ , m ∶ S)
 weaken {n} {m} {T} {S} {(Γ , n ∶ T)} neq here = there neq here
@@ -114,24 +111,22 @@ weaken {n} {m} {T} {S} {(_ , _ ∶ _)} neq (there neq' j) = there neq (there neq
 
 -- strengthen, the opposite of weaken
 strengthen : {n m : ℕ} {T S : Ty} {Γ : Env} → n ≢ m → n ∶ T ∈ (Γ , m ∶ S) → n ∶ T ∈ Γ
-strengthen {n} {.n} {T} {.T} n≢n here = {!!}  -- n≢n is impossible
+strengthen {n} {.n} {T} {.T} n≢n here = contradiction refl n≢n
 strengthen {n} {m} {T} {S} {Γ} n≢m (there neq j) = j
 
 -- preservation under substitution
-preserve-subst : {T S : Ty} {Γ : Env} {e s : Exp} (j : (Γ , 0 ∶ S) ⊢ e ∶ T) (j' : Γ ⊢ s ∶ S) → Γ ⊢ ([ 0 ↦ s ] e) ∶ T
-preserve-subst (TVar {zero} here) j' = j'
-preserve-subst (TVar {zero} (there 0≢0 j)) j' = {!!}  -- 0≢0 is impossible
-preserve-subst (TVar {suc n} x) j' = TVar (strengthen{suc n}{0} 1+n≢0 x)
+preserve-subst : {T S : Ty} {Γ : Env} {e s : Exp} (j : (Γ , 0 ∶ S) ⊢ e ∶ T) (j' : Γ ⊢ s ∶ S) → Γ ⊢ (↑ -[1+ 0 ] , 0 [ [ 0 ↦ ↑ + 1 , 0 [ s ] ] e ]) ∶ T
+preserve-subst (TVar {zero} here) j' = {!!}
+preserve-subst (TVar {zero} (there 0≢0 j)) j' = contradiction refl 0≢0 
+preserve-subst (TVar {suc n} x) j' = {!!} --TVar (strengthen{ℕ.suc n}{0} 1+n≢0 x)
 preserve-subst (TAbs j) j' = {!!}
-preserve-subst (TApp j j₁) j' = {!!}
+preserve-subst (TApp j j₁) j' = TApp (preserve-subst j j') (preserve-subst j₁ j')
 
 -- preservation theorem, i.e. a well-typed expression reduces to a well-typed expression
 preserve : {T : Ty} {Γ : Env} (e e' : Exp) (j : Γ ⊢ e ∶ T) (r : e ⇒ e') → Γ ⊢ e' ∶ T
 preserve (App s₁ s₂) .(App _ s₂) (TApp j j') (ξ-App1{e₁' = s₁'} r) = TApp (preserve s₁ s₁' j r) j' -- IH on inner reduction
 preserve (App s₁ s₂) .(App s₁ _) (TApp j j') (ξ-App2{e' = s₂'} x r) = TApp j (preserve s₂ s₂' j' r)
-preserve (App (Abs e) s') .([ 0 ↦ s' ] e) (TApp (TAbs j) j') (β-App x) = preserve-subst j j'
-
-
+preserve (App (Abs e) s')  .(↑ -[1+ 0 ] , 0 [ [ 0 ↦ ↑ + 1 , 0 [ s' ] ] e ]) (TApp (TAbs j) j') (β-App x) = preserve-subst j j'
 
 {- intermingling of substitution and typing?
 --
