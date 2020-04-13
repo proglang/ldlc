@@ -1,10 +1,16 @@
 module Auxiliary where
 
+open import Agda.Primitive
+open import Data.List
 open import Data.Nat
 open import Data.Nat.Properties
 open import Data.Integer
 open import Relation.Binary.PropositionalEquality
 open import Relation.Nullary
+
+n+length[]≡n : {a : Level} {A : Set a} {n : ℕ} → n Data.Nat.+ length{a}{A} [] ≡ n
+n+length[]≡n {a} {A} {zero} = refl
+n+length[]≡n {a} {A} {ℕ.suc n} = cong ℕ.suc (n+length[]≡n{a}{A})
 
 n+1≡sucn : {n : ℕ} → n Data.Nat.+ 1 ≡ ℕ.suc n
 n+1≡sucn {zero} = refl
