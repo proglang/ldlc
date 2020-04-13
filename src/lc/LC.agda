@@ -15,6 +15,8 @@ open import Relation.Nullary
 open import Relation.Nullary.Decidable
 open import Relation.Nullary.Negation
 
+open import Auxiliary
+
 -- definitions
 
 data Exp : Set where
@@ -64,23 +66,34 @@ eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
 ↑ d , c [ Abs t ] = Abs (↑ d , (ℕ.suc c) [ t ])
 ↑ d , c [ App t t₁ ] = App (↑ d , c [ t ]) (↑ d , c [ t₁ ])
 
-↑⁻¹ₖ[↑¹ₖ[s]]≡s : {e : Exp} {k : ℕ} → ↑ -[1+ 0 ] , k [ ↑ + 1 , k [ e ] ] ≡ e
-↑⁻¹ₖ[↑¹ₖ[s]]≡s {Var x} {k}
--- x < k
---  => ↑⁻¹ₖ(↑¹ₖ(Var n)) = ↑⁻¹ₖ(Var n) = Var n
--- x ≥ k
---  => ↑⁻¹ₖ(↑¹ₖ(Var n)) = ↑⁻¹ₖ(Var |n + 1|) = Var (||n + 1| - 1|) = Var n
-  with (x Data.Nat.<? k)
-... | yes p = {!!}
-... | no ¬p = {!!}
-↑⁻¹ₖ[↑¹ₖ[s]]≡s {Abs e} {k} = cong Abs ↑⁻¹ₖ[↑¹ₖ[s]]≡s
-↑⁻¹ₖ[↑¹ₖ[s]]≡s {App e e₁} = cong₂ App ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
-
+-- shorthands
 ↑¹[_] : Exp → Exp
 ↑¹[ e ] = ↑ (ℤ.pos 1) , 0 [ e ]
 
 ↑⁻¹[_] : Exp → Exp
 ↑⁻¹[ e ] = ↑ (ℤ.negsuc 0) , 0 [ e ]
+
+-- properties of shifting
+↑-var-refl : {d : ℤ} {c : ℕ} {x : ℕ} {le : ℕ.suc x Data.Nat.≤ c} → ↑ d , c [ Var x ] ≡ Var x
+↑-var-refl {d} {c} {x} {le}
+  with (x Data.Nat.<? c)
+... | no ¬p = contradiction le ¬p
+... | yes p = refl
+
+↑⁻¹ₖ[↑¹ₖ[s]]≡s : {e : Exp} {k : ℕ} → ↑ -[1+ 0 ] , k [ ↑ + 1 , k [ e ] ] ≡ e
+↑⁻¹ₖ[↑¹ₖ[s]]≡s {Var x} {k}
+  with (x Data.Nat.<? k)
+-- x < k
+--  => ↑⁻¹ₖ(↑¹ₖ(Var n)) = ↑⁻¹ₖ(Var n) = Var n
+... | yes p = ↑-var-refl{ -[1+ 0 ]}{k}{x}{p}
+-- x ≥ k
+--  => ↑⁻¹ₖ(↑¹ₖ(Var n)) = ↑⁻¹ₖ(Var |n + 1|) = Var (||n + 1| - 1|) = Var n
+... | no ¬p with (¬[x≤k]⇒¬[sucx≤k] ¬p)
+...   | ¬p' with (x Data.Nat.+ 1) Data.Nat.<? k
+...     | yes pp = contradiction pp ¬p'
+...     | no ¬pp rewrite (∣nℕ+1⊖1∣≡n{x}) = refl
+↑⁻¹ₖ[↑¹ₖ[s]]≡s {Abs e} {k} = cong Abs ↑⁻¹ₖ[↑¹ₖ[s]]≡s
+↑⁻¹ₖ[↑¹ₖ[s]]≡s {App e e₁} = cong₂ App ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
 
 -- substitution
 -- see Pierce 2002, pg. 80
@@ -119,7 +132,7 @@ progress (App e e₁) {T} {TApp{T₁ = T₁}{T₂ = .T} j j₁} with progress e 
 
 -- preservation under substitution
 preserve-subst : {T S : Ty} {Γ : Env} {e s : Exp} (j : (S ∷ Γ) ⊢ e ∶ T) (j' : Γ ⊢ s ∶ S) → Γ ⊢ (↑ -[1+ 0 ] , 0 [ [ 0 ↦ ↑ + 1 , 0 [ s ] ] e ]) ∶ T
-preserve-subst (TVar {.0} here) j = {!!}
+preserve-subst {s = s} (TVar {.0} here) j rewrite (↑⁻¹ₖ[↑¹ₖ[s]]≡s{s}{0}) = j
 preserve-subst (TVar {(ℕ.suc n)} (there x)) j = TVar x
 preserve-subst (TAbs j) j' = {!!}
 preserve-subst (TApp j j₁) j' = TApp (preserve-subst j j') (preserve-subst j₁ j')
