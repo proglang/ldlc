@@ -4,6 +4,7 @@ module LC where
 
 open import Agda.Primitive
 open import Agda.Builtin.Bool
+open import Data.Bool.Properties hiding (≤-trans)
 open import Data.Empty
 open import Data.Nat
 open import Data.Nat.Properties
@@ -66,13 +67,16 @@ eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
 ↑ d , c [ Abs t ] = Abs (↑ d , (ℕ.suc c) [ t ])
 ↑ d , c [ App t t₁ ] = App (↑ d , c [ t ]) (↑ d , c [ t₁ ])
 
--- shifting below threshold, required for swapping lemma
-↑<_,_[_] : ℤ → ℕ → Exp → Exp
-↑< d , c [ Var x ] with (x Data.Nat.<? c)
-... | yes p = Var (∣ (ℤ.pos x) Data.Integer.+ d ∣)
-... | no ¬p = Var x
-↑< d , c [ Abs e ] = Abs (↑< d , (c ∸ 1) [ e ]) -- ↑< -1 , 1 (Abs (Var 0)) → Abs (↑< -1 , 0 (Var 0)) → Abs (Var 0)
-↑< d , c [ App e e₁ ] = App (↑< d , c [ e ]) (↑< d , c [ e₁ ])
+-- shifting in range [n, m]; by def. m < n implies no shift
+↑[_,_]_[_] : ℕ → ℕ → ℤ → Exp → Exp
+↑[ n , m ] d [ Var x ]
+  with (x Data.Nat.<? n)
+... | yes p = Var x
+... | no ¬p with (m Data.Nat.<? x)
+...   | yes p' = Var x
+...   | no ¬p' = Var (∣ (ℤ.pos x) Data.Integer.+ d ∣)
+↑[ n , m ] d [ Abs e ] = Abs (↑[ ℕ.suc n , ℕ.suc m ] d [ e ]) 
+↑[ n , m ] d [ App e e₁ ] = App (↑[ n , m ] d [ e ]) (↑[ n , m ] d [ e₁ ])
 
 -- shorthands
 ↑¹[_] : Exp → Exp
@@ -87,6 +91,24 @@ eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
   with (x Data.Nat.<? c)
 ... | no ¬p = contradiction le ¬p
 ... | yes p = refl
+
+↑[]-var-refl-< : {n m x : ℕ} {d : ℤ} {le : x Data.Nat.< n} → ↑[ n , m ] d [ Var x ] ≡ Var x
+↑[]-var-refl-< {n} {m} {x} {d} {le}
+  with (x Data.Nat.<? n)
+... | yes p = refl
+... | no ¬p = contradiction le ¬p
+
+↑[]-var-refl-> : {n m x : ℕ} {d : ℤ} {le : m Data.Nat.< x} → ↑[ n , m ] d [ Var x ] ≡ Var x
+↑[]-var-refl-> {n} {m} {x} {d} {le}
+  with (x Data.Nat.<? n)
+... | yes p = refl
+... | no p with (m Data.Nat.<? x)
+...   | no ¬q = contradiction le ¬q
+...   | yes q = refl
+
+↑¹-var : {x : ℕ} → ↑¹[ Var x ] ≡ Var (ℕ.suc x)
+↑¹-var {zero} = refl
+↑¹-var {ℕ.suc x} rewrite (sym (n+1≡sucn{x Data.Nat.+ 1})) | (sym (n+1≡sucn{x})) = cong ↑¹[_] (↑¹-var{x})
 
 ↑⁻¹ₖ[↑¹ₖ[s]]≡s : {e : Exp} {k : ℕ} → ↑ -[1+ 0 ] , k [ ↑ + 1 , k [ e ] ] ≡ e
 ↑⁻¹ₖ[↑¹ₖ[s]]≡s {Var x} {k}
@@ -108,9 +130,9 @@ eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
 -- substitution
 -- see Pierce 2002, pg. 80
 [_↦_]_ : ℕ → Exp → Exp → Exp
-[ k ↦ s ] Var x with (_≡ᵇ_ x k)
-... | false = Var x
-... | true = s
+[ k ↦ s ] Var x with (Data.Nat._≟_ x k)
+... | yes p = s
+... | no ¬p = Var x
 [ k ↦ s ] Abs t = Abs ([ ℕ.suc k ↦ ↑¹[ s ] ] t)
 [ k ↦ s ] App t t₁ = App ([ k ↦ s ] t) ([ k ↦ s ] t₁)
 
@@ -140,14 +162,56 @@ progress (App e e₁) {T} {TApp{T₁ = T₁}{T₂ = .T} j j₁} with progress e 
 ...    | step x₁ = step (ξ-App2 VFun x₁)
 ...    | value x₁ = step (β-App x₁)
 
+--
 
-swap-subst : {T S : Ty} {Γ Δ : Env} {e : Exp} (j : ((S ∷ Δ) ++ Γ) ⊢ e ∶ T) → (Δ ++ (S ∷ Γ)) ⊢ ↑< -[1+ 0 ] , length Δ [ [ 0 ↦ Var (length Δ) ] e ] ∶ T
+data extract-env-or {Δ Γ : Env} {T : Ty} {x : ℕ} : Set where
+  in-Δ : x ∶ T ∈ Δ → extract-env-or
+  in-Γ : (x ∸ length Δ) ∶ T ∈ Γ → extract-env-or
 
--- have to "remember" where S was
--- cannot substitute its position for zero, since ↑< would increase that
--- cannot do ↑< and then subtitute its position for zero, since its (position - 1) would be affected aswell
--- ugly fix: cache in unreachable variable l(Δ) + l(Γ) + 1
-swap-subst-inv : {T S : Ty} {Γ Δ : Env} {e : Exp} (j : (Δ ++ (S ∷ Γ)) ⊢ e ∶ T) → (S ∷ (Δ ++ Γ)) ⊢ [ (length Δ Data.Nat.+ length Γ Data.Nat.+ 1) ↦ Var 0 ] (↑< +[1+ 0 ] , (length Δ) [ [ (length Δ) ↦ (Var (length Δ Data.Nat.+ length Γ Data.Nat.+ 1)) ] e ] ) ∶ T
+extract : {Δ Γ : Env} {T : Ty} {x : ℕ} (j : x ∶ T ∈ (Δ ++ Γ)) → extract-env-or{Δ}{Γ}{T}{x}
+extract {[]} {Γ} {T} {x} j = in-Γ j
+extract {x₁ ∷ Δ} {Γ} {.x₁} {.0} here = in-Δ here
+extract {x₁ ∷ Δ} {Γ} {T} {ℕ.suc x} (there j)
+  with extract {Δ} {Γ} {T} {x} j
+... | in-Δ j'  = in-Δ (there j')
+... | in-Γ j'' = in-Γ j''
+
+var-env-< : {Γ : Env} {T : Ty} {n : ℕ} (j : n ∶ T ∈ Γ) → n Data.Nat.< (length Γ)
+var-env-< {.(T ∷ _)} {T} {.0} here = s≤s z≤n
+var-env-< {.(_ ∷ _)} {T} {.(ℕ.suc _)} (there j) = s≤s (var-env-< j)
+
+var-subst-refl : {n m : ℕ} {neq : n ≢ m} {e : Exp} → [ n ↦ e ] (Var m) ≡ (Var m)
+var-subst-refl {n} {m} {neq} {e}
+  with Data.Nat._≟_ n m | map′ (≡ᵇ⇒≡ m n) (≡⇒≡ᵇ m n) (Data.Bool.Properties.T? (m ≡ᵇ n))
+... | yes p | _ = contradiction p neq
+... | no ¬p | yes q = contradiction q (≢-sym ¬p)
+... | no ¬p | no ¬q = refl
+
+ext-behind : {Δ Γ : Env} {T : Ty} {x : ℕ} → x ∶ T ∈ Δ → x ∶ T ∈ (Δ ++ Γ)
+ext-behind here = here
+ext-behind (there j) = there (ext-behind j)
+
+-- we have to "remember" where S was
+-- cannot substitute its position for zero, since ↑ would increase that
+-- cannot do ↑ and then subtitute its position for zero, since (position - 1) would be affected aswell
+-- ugly fix: cache in unreachable variable r
+swap-subst : {T S : Ty} {Γ Δ ∇ : Env} {e : Exp} {r : ℕ} {gt : r Data.Nat.> length Δ Data.Nat.+ (length Γ Data.Nat.+ length ∇)} (j : (Δ ++ (S ∷ ∇) ++ Γ) ⊢ e ∶ T)
+             → (Δ ++ ∇ ++ (S ∷ Γ)) ⊢ [ r ↦ Var (length Δ Data.Nat.+ length ∇) ] ↑[ ℕ.suc (length Δ) , ℕ.suc (length Δ Data.Nat.+ length ∇) ] -[1+ 0 ] [ [ length Δ ↦ Var r ] e ] ∶ T
+             
+swap-subst {T} {S} {Γ} {Δ} {∇} {Var y} {r} {gt} (TVar j)
+  with extract{Δ} {(S ∷ ∇) ++ Γ} {T} {y} j | y Data.Nat.<? (foldr (λ _ → ℕ.suc) 0 Δ) | Data.Nat._≟_ y (length Δ)
+-- y ∈ Δ
+... | in-Δ x | yes p | yes q = contradiction q (<⇒≢ p)
+... | in-Δ x | yes p | no ¬q  rewrite (↑[]-var-refl-<{ℕ.suc (length Δ)}{ℕ.suc (length Δ) Data.Nat.+ length ∇}{y}{ -[1+ 0 ] }{[k<x]⇒[k<sucx] p})
+                           | (var-subst-refl{r}{y}{≢-sym (<⇒≢ (a<b≤c⇒a<c p (≤-trans (n≤m⇒n≤sucm (m≤m+n (length Δ) (length Γ Data.Nat.+ length ∇))) gt)) )}
+                                            {Var (foldr (λ _ → ℕ.suc) 0 Δ Data.Nat.+ foldr (λ _ → ℕ.suc) 0 ∇)})
+                            = TVar (ext-behind x)
+... | in-Δ x | no ¬p | _ = contradiction (var-env-< x) ¬p
+-- y ∈ ((S ∷ ∇) ++ Γ)
+... | in-Γ x | q | l = {!!}
+
+swap-subst {(Fun T₁ T₂)} {S} {Γ} {Δ} {∇} {(Abs e)} {r} {gt} (TAbs j) rewrite (↑¹-var{length Δ Data.Nat.+ length ∇}) | (n+1≡sucn{r}) = TAbs (swap-subst{T₂}{S}{Γ}{T₁ ∷ Δ}{∇}{e}{ℕ.suc r}{s≤s gt} j)
+swap-subst {T} {S} {Γ} {Δ} {∇} {(App e e₁)} {r} {gt} (TApp{T₁ = T₁}{T₂} j j₁) = TApp (swap-subst{Fun T₁ T₂}{S}{Γ}{Δ}{∇}{e}{r}{gt} j) (swap-subst{T₁}{S}{Γ}{Δ}{∇}{e₁}{r}{gt} j₁)
 
 ext-var : {n : ℕ} {Γ Δ : Env} {S : Ty} → n ∶ S ∈ Γ → (n Data.Nat.+ (length Δ)) ∶ S ∈ (Δ ++ Γ)
 ext-var {n} {Γ} {[]} {S} j rewrite (n+length[]≡n{A = Ty}{n = n}) = j
@@ -155,15 +219,16 @@ ext-var {n} {Γ} {T ∷ Δ} {S} j rewrite (+-suc n (foldr (λ _ → ℕ.suc) 0 �
 
 ext : {Γ Δ : Env} {S : Ty} {s : Exp} → Γ ⊢ s ∶ S → (Δ ++ Γ) ⊢ ↑ (ℤ.pos (length Δ)) , 0 [ s ] ∶ S
 ext (TVar {n} x) = TVar (ext-var x)
-ext {Γ} {Δ} {Fun T₁ T₂} {Abs e} (TAbs j) = {!!} --  TAbs (swap-subst-inv{T₂}{T₁}{Γ}{Δ} (ext{T₁ ∷ Γ}{Δ}{s = e} {!!}))
-ext (TApp j j₁) = {!!}
+ext {Γ} {Δ} {Fun T₁ T₂} {Abs e} (TAbs j) = {!!}
+ext (TApp j j₁) = TApp (ext j) (ext j₁)
+
 
 -- preservation under substitution
 preserve-subst : {T S : Ty} {Γ Δ : Env} {e s : Exp} (j : (Δ ++ (S ∷ Γ)) ⊢ e ∶ T) (j' : Γ ⊢ s ∶ S) → Γ ⊢ ↑ -[1+ 0 ] ,  length Δ [ [ length Δ ↦ ↑ (ℤ.pos (ℕ.suc (length Δ))) , 0 [ s ] ] e ] ∶ T
 preserve-subst {Γ = Γ} {Δ = []} {s = s} (TVar here) j' rewrite (↑⁻¹ₖ[↑¹ₖ[s]]≡s{s}{0}) = j'
 preserve-subst {Γ = Γ} {Δ = []} (TVar (there x)) j' = TVar x
 preserve-subst {Γ = Γ} {Δ = x₁ ∷ Δ} (TVar x) j' = {!!}
-preserve-subst {T} {S} {Γ} {Δ} {Abs e'} {s} (TAbs{T₁ = T₁}{T₂} j) j'  = TAbs {!!}
+preserve-subst {T} {S} {Γ} {Δ} {Abs e'} {s} (TAbs{T₁ = T₁}{T₂} j) j' = TAbs (preserve-subst{Δ = Δ} ({! swap-subst{T₂}{T₁}{Γ}{Δ ++ (S ∷ [])} {!!} !}) (ext{Δ = T₁ ∷ []} j'))
 preserve-subst (TApp j j₁) j' = {!!}
 
 -- preservation theorem, i.e. a well-typed expression reduces to a well-typed expression
@@ -171,6 +236,8 @@ preserve : {T : Ty} {Γ : Env} (e e' : Exp) (j : Γ ⊢ e ∶ T) (r : e ⇒ e') 
 preserve (App s₁ s₂) .(App _ s₂) (TApp j j') (ξ-App1{e₁' = s₁'} r) = TApp (preserve s₁ s₁' j r) j' -- IH on inner reduction
 preserve (App s₁ s₂) .(App s₁ _) (TApp j j') (ξ-App2{e' = s₂'} x r) = TApp j (preserve s₂ s₂' j' r)
 preserve (App (Abs e) s')  .(↑⁻¹[ [ 0 ↦ ↑¹[ s' ] ] e ]) (TApp (TAbs j) j') (β-App x) = preserve-subst{Δ = []} j j'
+
+
 
 
 
@@ -197,4 +264,26 @@ preserve-subst {T} {S} {Γ} {Var (suc n)} {s} (TVar {suc n} (there x)) j' = TVar
 
 
 ==> had wrong β-App definition
+
+
+-- shifting below threshold
+↑<_,_[_] : ℤ → ℕ → Exp → Exp
+↑< d , c [ Var x ] with (x Data.Nat.<? c)
+... | yes p = Var (∣ (ℤ.pos x) Data.Integer.+ d ∣)
+... | no ¬p = Var x
+↑< d , c [ Abs e ] = Abs (↑< d , (c ∸ 1) [ e ]) -- ↑< -1 , 1 (Abs (Var 0)) → Abs (↑< -1 , 0 (Var 0)) → Abs (Var 0)
+
+↯, one level of abstraction deeper the range [1, c + 1] should be shifted.
+becomes clear if you imagine an environment next to the expression
+Γ ⊢ ↑< d [ Abs e ] : T
+S ∷ Γ ⊢ Abs (↑< d [ e ]) : T => "S" should not be shifted
+
+
+swap-subst : {T S : Ty} {Γ Δ : Env} {e : Exp} {r : ℕ} {gt : r Data.Nat.> length Δ Data.Nat.+ length Γ} (j : ((S ∷ Δ) ++ Γ) ⊢ e ∶ T) → (Δ ++ (S ∷ Γ)) ⊢ [ r ↦ Var (length Δ) ] ↑< -[1+ 0 ] , length Δ Data.Nat.+ 1 [ [ 0 ↦ Var r ] e ] ∶ T
+swap-subst {T} {S} {Γ} {Δ} {(Var y)} {r} {gt} (TVar x) = {!!}
+swap-subst {(Fun T₁ T₂)} {S} {Γ} {Δ} {(Abs e)} {r} {gt} (TAbs j) = TAbs {!!}  -- not general enough? need to swap arbitrary positions
+swap-subst {T} {S} {Γ} {Δ} {(App e e')} {r} {gt} (TApp j j₁) = TApp (swap-subst j) (swap-subst j₁)
+swap-subst-inv : {T S : Ty} {Γ Δ : Env} {e : Exp} {r : ℕ} {gt : r Data.Nat.> length Δ Data.Nat.+ length Γ} (j : (Δ ++ (S ∷ Γ)) ⊢ e ∶ T) → (S ∷ (Δ ++ Γ)) ⊢ [ r ↦ Var 0 ] (↑< +[1+ 0 ] , (length Δ) [ [ (length Δ) ↦ Var r ] e ] ) ∶ T
+
+
 -}
