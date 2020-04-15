@@ -4,7 +4,7 @@ module LC where
 
 open import Agda.Primitive
 open import Agda.Builtin.Bool
-open import Data.Bool.Properties hiding (≤-trans)
+open import Data.Bool.Properties hiding (≤-trans ; <-trans ; ≤-refl)
 open import Data.Empty
 open import Data.Nat
 open import Data.Nat.Properties
@@ -166,16 +166,19 @@ progress (App e e₁) {T} {TApp{T₁ = T₁}{T₂ = .T} j j₁} with progress e 
 
 data extract-env-or {Δ Γ : Env} {T : Ty} {x : ℕ} : Set where
   in-Δ : x ∶ T ∈ Δ → extract-env-or
-  in-Γ : (x ∸ length Δ) ∶ T ∈ Γ → extract-env-or
+  -- x ≥ length Δ is required to make sure x is really in Γ and not also in Δ, e.g.
+  -- x = 1, Δ = (S ∷ T), Γ = (T ∷ Γ'); here 1 ∶ T ∈ Δ as well as (1 ∸ 2) ≡ 0 ∶ T ∈ Γ
+  in-Γ : (x Data.Nat.≥ length Δ) → (x ∸ length Δ) ∶ T ∈ Γ → extract-env-or
 
 extract : {Δ Γ : Env} {T : Ty} {x : ℕ} (j : x ∶ T ∈ (Δ ++ Γ)) → extract-env-or{Δ}{Γ}{T}{x}
-extract {[]} {Γ} {T} {x} j = in-Γ j
+extract {[]} {Γ} {T} {x} j = in-Γ z≤n j
 extract {x₁ ∷ Δ} {Γ} {.x₁} {.0} here = in-Δ here
 extract {x₁ ∷ Δ} {Γ} {T} {ℕ.suc x} (there j)
   with extract {Δ} {Γ} {T} {x} j
 ... | in-Δ j'  = in-Δ (there j')
-... | in-Γ j'' = in-Γ j''
+... | in-Γ ge j'' = in-Γ (s≤s ge) j''
 
+-- alt.: include x < length Δ in def. of in-Δ
 var-env-< : {Γ : Env} {T : Ty} {n : ℕ} (j : n ∶ T ∈ Γ) → n Data.Nat.< (length Γ)
 var-env-< {.(T ∷ _)} {T} {.0} here = s≤s z≤n
 var-env-< {.(_ ∷ _)} {T} {.(ℕ.suc _)} (there j) = s≤s (var-env-< j)
@@ -191,34 +194,80 @@ ext-behind : {Δ Γ : Env} {T : Ty} {x : ℕ} → x ∶ T ∈ Δ → x ∶ T ∈
 ext-behind here = here
 ext-behind (there j) = there (ext-behind j)
 
+ext-front : {n : ℕ} {Γ Δ : Env} {S : Ty} → n ∶ S ∈ Γ → (n Data.Nat.+ (length Δ)) ∶ S ∈ (Δ ++ Γ)
+ext-front {n} {Γ} {[]} {S} j rewrite (n+length[]≡n{A = Ty}{n = n}) = j
+ext-front {n} {Γ} {T ∷ Δ} {S} j rewrite (+-suc n (foldr (λ _ → ℕ.suc) 0 Δ)) = there (ext-front j)
+
+-- some very specific required calculations for swap-subst var case
+length-≡ : {Δ ∇ Γ : Env} {S : Ty} → ℕ.suc (length Δ Data.Nat.+ (length Γ Data.Nat.+ length ∇)) ≡ length (Δ ++ S ∷ ∇ ++ Γ)
+length-≡ {Δ} {∇} {Γ} {S} rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{Δ}{S ∷ ∇ ++ Γ})
+                               | (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{Γ})
+                               | (+-suc (length Δ) (length ∇ Data.Nat.+ length Γ))
+                               | (+-comm (length ∇) (length Γ)) = refl
+
+
+
+length-≡' : {Δ ∇ : Env} {S : Ty} → length (Δ ++ ∇ ++ S ∷ []) ≡ length Δ Data.Nat.+ ℕ.suc (length ∇)
+length-≡' {Δ} {∇} {S} rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{Δ}{∇ ++ S ∷ []})
+                            | (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{S ∷ []})
+                            | (+-suc (length ∇) (0))
+                            | (+-identityʳ (length ∇)) = refl
+
+
+length-≡'' : {Δ ∇ : Env} {S : Ty} → length (Δ ++ ∇ ++ S ∷ []) ≡ ℕ.suc (length ∇ Data.Nat.+ length Δ)
+length-≡'' {Δ} {∇} {S} rewrite (cong (ℕ.suc) (+-comm (length ∇) (length Δ)))
+                             | (sym (+-suc (length Δ) (length ∇))) = length-≡'{Δ}{∇}{S}  
+
+
+-- length-≡'{Δ}{∇}{S}
+
+-- y-in-env-rewr : {y : ℕ} {Δ : Env} {T : Ty} (y ∶ T ∈ Δ)
+
 -- we have to "remember" where S was
 -- cannot substitute its position for zero, since ↑ would increase that
 -- cannot do ↑ and then subtitute its position for zero, since (position - 1) would be affected aswell
 -- ugly fix: cache in unreachable variable r
-swap-subst : {T S : Ty} {Γ Δ ∇ : Env} {e : Exp} {r : ℕ} {gt : r Data.Nat.> length Δ Data.Nat.+ (length Γ Data.Nat.+ length ∇)} (j : (Δ ++ (S ∷ ∇) ++ Γ) ⊢ e ∶ T)
-             → (Δ ++ ∇ ++ (S ∷ Γ)) ⊢ [ r ↦ Var (length Δ Data.Nat.+ length ∇) ] ↑[ ℕ.suc (length Δ) , ℕ.suc (length Δ Data.Nat.+ length ∇) ] -[1+ 0 ] [ [ length Δ ↦ Var r ] e ] ∶ T
-             
-swap-subst {T} {S} {Γ} {Δ} {∇} {Var y} {r} {gt} (TVar j)
-  with extract{Δ} {(S ∷ ∇) ++ Γ} {T} {y} j | y Data.Nat.<? (foldr (λ _ → ℕ.suc) 0 Δ) | Data.Nat._≟_ y (length Δ)
--- y ∈ Δ
-... | in-Δ x | yes p | yes q = contradiction q (<⇒≢ p)
-... | in-Δ x | yes p | no ¬q  rewrite (↑[]-var-refl-<{ℕ.suc (length Δ)}{ℕ.suc (length Δ) Data.Nat.+ length ∇}{y}{ -[1+ 0 ] }{[k<x]⇒[k<sucx] p})
-                           | (var-subst-refl{r}{y}{≢-sym (<⇒≢ (a<b≤c⇒a<c p (≤-trans (n≤m⇒n≤sucm (m≤m+n (length Δ) (length Γ Data.Nat.+ length ∇))) gt)) )}
-                                            {Var (foldr (λ _ → ℕ.suc) 0 Δ Data.Nat.+ foldr (λ _ → ℕ.suc) 0 ∇)})
-                            = TVar (ext-behind x)
-... | in-Δ x | no ¬p | _ = contradiction (var-env-< x) ¬p
--- y ∈ ((S ∷ ∇) ++ Γ)
-... | in-Γ x | q | l = {!!}
-
+swap-subst : {T S : Ty} {Γ Δ ∇ : Env} {e : Exp} {r : ℕ} {gt : r Data.Nat.> ℕ.suc (length Δ Data.Nat.+ (length Γ Data.Nat.+ length ∇))}
+             → (Δ ++ (S ∷ ∇) ++ Γ) ⊢ e ∶ T
+             → (Δ ++ ∇ ++ (S ∷ Γ)) ⊢ [ r ↦ Var (length Δ Data.Nat.+ length ∇) ] ↑[ ℕ.suc (length Δ) , length Δ Data.Nat.+ length ∇ ] -[1+ 0 ] [ [ length Δ ↦ Var r ] e ] ∶ T
+             -- off by one in the indices in upper limit of shifting: ℕ.suc (length Δ Data.Nat.+ length ∇) was one too far
 swap-subst {(Fun T₁ T₂)} {S} {Γ} {Δ} {∇} {(Abs e)} {r} {gt} (TAbs j) rewrite (↑¹-var{length Δ Data.Nat.+ length ∇}) | (n+1≡sucn{r}) = TAbs (swap-subst{T₂}{S}{Γ}{T₁ ∷ Δ}{∇}{e}{ℕ.suc r}{s≤s gt} j)
 swap-subst {T} {S} {Γ} {Δ} {∇} {(App e e₁)} {r} {gt} (TApp{T₁ = T₁}{T₂} j j₁) = TApp (swap-subst{Fun T₁ T₂}{S}{Γ}{Δ}{∇}{e}{r}{gt} j) (swap-subst{T₁}{S}{Γ}{Δ}{∇}{e₁}{r}{gt} j₁)
+swap-subst {T} {S} {Γ} {Δ} {∇} {Var y} {r} {gt} (TVar j)
+  with extract{Δ} {(S ∷ ∇) ++ Γ} {T} {y} j | y Data.Nat.<? (foldr (λ _ → ℕ.suc) 0 Δ) | Data.Nat._≟_ y (length Δ)  
+-- y ∈ Δ
+... | in-Δ x | yes p | yes q = contradiction q (<⇒≢ p)
+... | in-Δ x | yes p | no ¬q  rewrite (↑[]-var-refl-<{ℕ.suc (length Δ)}{length Δ Data.Nat.+ length ∇}{y}{ -[1+ 0 ] }{[k<x]⇒[k<sucx] p})
+                                    | (var-subst-refl{r}{y}{≢-sym (<⇒≢ (a<b≤c⇒a<c p (≤-trans (n≤m⇒n≤sucm (m≤m+n (length Δ) (length Γ Data.Nat.+ length ∇))) (<-trans (s≤s ≤-refl) gt))) )}
+                                      {Var (foldr (λ _ → ℕ.suc) 0 Δ Data.Nat.+ foldr (λ _ → ℕ.suc) 0 ∇)})
+                                      = TVar (ext-behind x)
+... | in-Δ x | no ¬p | _ = contradiction (var-env-< x) ¬p
+-- y' ∈ ((S ∷ ∇) ++ Γ)
+-- here (y @ S), y ≡ length Δ
+... | in-Γ ge x | yes p | yes q = contradiction q (<⇒≢ p)
+... | in-Γ ge x | no ¬p | yes q = {!!}
+-- there (y ∈ ∇ ++ Γ) y > length Δ
+... | in-Γ ge x | yes p | no q = contradiction p (≤⇒≯ ge)
+... | in-Γ ge x | no p | no q
+  with extract{S ∷ ∇} {Γ} {T} {y ∸ length Δ} x
+-- y' ∈ ∇
+... | in-Δ z = {!!}
+-- y ∸ length (Δ) ≥ length (S ∷ ∇) implies  y ∸ length (Δ) + length (Δ) ≥ length (S ∷ ∇) + length (Δ)
+-- y ≥ length Δ                    implies  y ∸ length (Δ) + length (Δ) ≡ y
+--                                          y ≥ length (S ∷ ∇) + length (Δ) > length S + length Δ
+-- hence no shifting takes place
+... | in-Γ ge' z
+    rewrite (↑[]-var-refl->{ℕ.suc (length Δ)}{length Δ Data.Nat.+ length ∇}{y}{ -[1+ 0 ]}{a<b≤c⇒a<c (s≤s (≤-refl-+-comm{length Δ}{length ∇})) (m≤n∧n≡q⇒m≤q (m≤n⇒m+o≤n+o{o = length Δ} ge') (m∸n+n≡m ge))})
+                        | (var-subst-refl{r}{y}{≢-sym (<⇒≢ (<-trans (var-env-< j) (m≤n∧m≡q⇒q≤n gt (cong ℕ.suc (length-≡{Δ}{∇}{Γ}{S})))))}{ Var (foldr (λ _ → ℕ.suc) 0 Δ Data.Nat.+ foldr (λ _ → ℕ.suc) 0 ∇)})
+    with ext-front{((y ∸ (length Δ)) ∸ ℕ.suc (length ∇))}{Γ}{Δ ++ ∇ ++ (S ∷ [])}{T}
+...   | w rewrite (∸-+-assoc y (length Δ) (ℕ.suc (length ∇)))
+                           | (sym (length-≡'{Δ}{∇}{S}))
+                           | (m∸n+n≡m{y}{length (Δ ++ ∇ ++ S ∷ [])}  (m≤n∧m≡q⇒q≤n (m≤n∧n≡q⇒m≤q (m≤n⇒m+o≤n+o{o = length Δ} ge') (m∸n+n≡m ge)) (sym (length-≡''{Δ}{∇}{S}))))
+                           | (A++B++D∷[]++C≡A++B++D∷C{lzero}{Ty}{Δ}{∇}{Γ}{S}) = TVar (w z)
 
-ext-var : {n : ℕ} {Γ Δ : Env} {S : Ty} → n ∶ S ∈ Γ → (n Data.Nat.+ (length Δ)) ∶ S ∈ (Δ ++ Γ)
-ext-var {n} {Γ} {[]} {S} j rewrite (n+length[]≡n{A = Ty}{n = n}) = j
-ext-var {n} {Γ} {T ∷ Δ} {S} j rewrite (+-suc n (foldr (λ _ → ℕ.suc) 0 Δ)) = there (ext-var j)
 
 ext : {Γ Δ : Env} {S : Ty} {s : Exp} → Γ ⊢ s ∶ S → (Δ ++ Γ) ⊢ ↑ (ℤ.pos (length Δ)) , 0 [ s ] ∶ S
-ext (TVar {n} x) = TVar (ext-var x)
+ext (TVar {n} x) = TVar (ext-front x)
 ext {Γ} {Δ} {Fun T₁ T₂} {Abs e} (TAbs j) = {!!}
 ext (TApp j j₁) = TApp (ext j) (ext j₁)
 
@@ -228,7 +277,7 @@ preserve-subst : {T S : Ty} {Γ Δ : Env} {e s : Exp} (j : (Δ ++ (S ∷ Γ)) �
 preserve-subst {Γ = Γ} {Δ = []} {s = s} (TVar here) j' rewrite (↑⁻¹ₖ[↑¹ₖ[s]]≡s{s}{0}) = j'
 preserve-subst {Γ = Γ} {Δ = []} (TVar (there x)) j' = TVar x
 preserve-subst {Γ = Γ} {Δ = x₁ ∷ Δ} (TVar x) j' = {!!}
-preserve-subst {T} {S} {Γ} {Δ} {Abs e'} {s} (TAbs{T₁ = T₁}{T₂} j) j' = TAbs (preserve-subst{Δ = Δ} ({! swap-subst{T₂}{T₁}{Γ}{Δ ++ (S ∷ [])} {!!} !}) (ext{Δ = T₁ ∷ []} j'))
+preserve-subst {T} {S} {Γ} {Δ} {Abs e'} {s} (TAbs{T₁ = T₁}{T₂} j) j' = TAbs (preserve-subst{Δ = Δ} ({! swap-subst{T₂}{T₁}{Γ}{[]}{Δ ++ (S ∷ [])} {?} !}) (ext{Δ = T₁ ∷ []} j'))
 preserve-subst (TApp j j₁) j' = {!!}
 
 -- preservation theorem, i.e. a well-typed expression reduces to a well-typed expression
@@ -284,6 +333,5 @@ swap-subst {T} {S} {Γ} {Δ} {(Var y)} {r} {gt} (TVar x) = {!!}
 swap-subst {(Fun T₁ T₂)} {S} {Γ} {Δ} {(Abs e)} {r} {gt} (TAbs j) = TAbs {!!}  -- not general enough? need to swap arbitrary positions
 swap-subst {T} {S} {Γ} {Δ} {(App e e')} {r} {gt} (TApp j j₁) = TApp (swap-subst j) (swap-subst j₁)
 swap-subst-inv : {T S : Ty} {Γ Δ : Env} {e : Exp} {r : ℕ} {gt : r Data.Nat.> length Δ Data.Nat.+ length Γ} (j : (Δ ++ (S ∷ Γ)) ⊢ e ∶ T) → (S ∷ (Δ ++ Γ)) ⊢ [ r ↦ Var 0 ] (↑< +[1+ 0 ] , (length Δ) [ [ (length Δ) ↦ Var r ] e ] ) ∶ T
-
 
 -}
