@@ -74,6 +74,11 @@ m≤n⇒m+o≤n+o {ℕ.suc m} {ℕ.suc n} {o} (s≤s le) = s≤s (m≤n⇒m+o≤
 a<b≤c⇒a<c : {a b c : ℕ} → a <ᴺ b → b ≤ᴺ c → a <ᴺ c
 a<b≤c⇒a<c {a} {b} {c} lt le = ≤-trans lt le
 
+a≤b<c⇒a<c : {a b c : ℕ} → a ≤ᴺ b → b <ᴺ c → a <ᴺ c
+a≤b<c⇒a<c {.0} {zero} {c} z≤n lt = lt
+a≤b<c⇒a<c {.0} {ℕ.suc b} {ℕ.suc c} z≤n (s≤s lt) = s≤s z≤n
+a≤b<c⇒a<c {.(ℕ.suc _)} {.(ℕ.suc _)} {ℕ.suc c} (s≤s le) (s≤s lt) = s≤s (a≤b<c⇒a<c le lt)
+
 m≤n∧m≡q⇒q≤n : {m n q : ℕ} → m ≤ᴺ n → m ≡ q → q ≤ᴺ n
 m≤n∧m≡q⇒q≤n {m} {n} {q} le eq rewrite eq = le
 
@@ -112,6 +117,9 @@ m∸n≥q⇒m≥q {m} {n} {q} ge = ≤-trans ge (m∸n≤m m n)
 
 -- integers
 
+m≥0⇒n+m≥0 : {n : ℕ} {m : ℤ} → m ≥ᶻ +0 → + n +ᶻ m ≥ᶻ +0
+m≥0⇒n+m≥0 {n} {+_ m} ge = +≤+ z≤n
+
 n>0⇒n>∣n⊖1∣ : {n : ℕ} → n ≥ᴺ 1 → n >ᴺ ∣ n ⊖ 1 ∣
 n>0⇒n>∣n⊖1∣ {.(ℕ.suc _)} (s≤s le) = n<sucn
 
@@ -121,6 +129,9 @@ n>0⇒n>∣n⊖1∣ {.(ℕ.suc _)} (s≤s le) = n<sucn
 
 m≥0⇒∣n+m∣≥n : {n : ℕ} {m : ℤ} → m ≥ᶻ +0 → ∣ +_ n +ᶻ m ∣ ≥ᴺ n 
 m≥0⇒∣n+m∣≥n {n} {+_ m} ge = m≤m+n n m
+
+m>0⇒∣n+m∣>n : {n : ℕ} {m : ℤ} → m >ᶻ +0 → ∣ +_ n +ᶻ m ∣ >ᴺ n 
+m>0⇒∣n+m∣>n {n} {(+ m)} (+<+ m<n) = m<m+n n m<n
 
 ∣n∣≥n : {n : ℤ} → + ∣ n ∣ ≥ᶻ n
 ∣n∣≥n {+_ n} = +≤+ ≤-refl
@@ -144,9 +155,6 @@ m≥0⇒∣n+m∣≥n {n} {+_ m} ge = m≤m+n n m
         = Data.Integer.Properties.+-monoˡ-≤ (+ 1) le
 
 
-m≥0⇒n+m≥0 : {n : ℕ} {m : ℤ} → m ≥ᶻ +0 → + n +ᶻ m ≥ᶻ +0
-m≥0⇒n+m≥0 {n} {+_ m} ge = +≤+ z≤n
-
 ℤ-m≤n⇒m+o≤n+o : {m n o : ℤ} → m ≤ᶻ n → m +ᶻ o ≤ᶻ n +ᶻ o
 ℤ-m≤n⇒m+o≤n+o {m} {n} {o} le = Data.Integer.Properties.+-monoˡ-≤ o le
 
@@ -157,4 +165,6 @@ minus-1 {y} {x} {lt}
         | (m∸n+n≡m {y} {x} (sucn≤m⇒n≤m lt))
         | (Data.Integer.Properties.⊖-≥{y}{1} ((m∸n≥q⇒m≥q{y}{x} (m>n⇒m∸n≥1{y}{x} lt))))
         = refl
-        
+
+k≥0⇒∣+x+k∣≡x+k : {x k : ℕ} → ∣ + x +ᶻ + k ∣ ≡ x +ᴺ k
+k≥0⇒∣+x+k∣≡x+k {x} {k} = refl
