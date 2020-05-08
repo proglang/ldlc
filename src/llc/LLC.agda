@@ -325,6 +325,28 @@ module operational where
     rewrite (sym (n+1≡sucn{q}))
           = ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]]{n}{k}{q}{c}{1}{s} le le'
 
+  ↑Lab-triv : {n : ℕ} {s : Subset n} {l : Fin n} (i : l ∈ s) (k : ℤ) (q : ℕ) → LabI i ≡ ↑ k , q [ LabI i ] 
+  ↑Lab-triv {n} {s} {l} i k q = refl
+
+  ↑ᴺ-triv : {m : ℤ} {n x : ℕ} → x ≥ᴺ n → ↑ᴺ m , n [ x ] ≡ ∣ + x +ᶻ m ∣ 
+  ↑ᴺ-triv {m} {n} {x} ge
+    with x <ᴺ? n
+  ... | yes p = contradiction p (≤⇒≯ ge)
+  ... | no ¬p = refl
+
+  ↑ᴺ⁰-refl : {n : ℕ} {c : ℕ} {x : ℕ} → ↑ᴺ + 0 , c [ x ] ≡ x
+  ↑ᴺ⁰-refl {n} {c} {x}
+    with x <ᴺ? c
+  ...  | yes p = refl
+  ...  | no ¬p = +-identityʳ x
+
+  ↑⁰-refl : {n : ℕ} {c : ℕ} {e : Exp {n}} → ↑ + 0 , c [ e ] ≡ e
+  ↑⁰-refl {n} {c} {Var x} = cong Var (↑ᴺ⁰-refl{n}{c}{x})
+  ↑⁰-refl {n} {c} {Abs e} = cong Abs (↑⁰-refl{n}{ℕ.suc c}{e})
+  ↑⁰-refl {n} {c} {App e e₁} = cong₂ App (↑⁰-refl{n}{c}{e}) (↑⁰-refl{n}{c}{e₁})
+  ↑⁰-refl {n} {c} {LabI x} = refl
+  ↑⁰-refl {n} {c} {LabE x e} = cong₂ LabE (f-ext (λ l → f-ext λ i → ↑⁰-refl{n}{c}{x l i})) (↑⁰-refl{n}{c}{e})
+
   --- properties of substitution
 
   subst-trivial : {n : ℕ} {x : ℕ} {s : Exp {n}} → [ x ↦ s ] Var x ≡ s
@@ -496,21 +518,53 @@ module operational where
   ext {N} {Γ} {Δ} {∇} {S} {App s₁ s₂} (TApp{T₁ = T₁} j₁ j₂) = TApp (ext{N}{Γ}{Δ}{∇}{Fun T₁ S} j₁) (ext{N}{Γ}{Δ}{∇}{T₁} j₂)
   ext {N} {Γ} {Δ} {∇} {S} {LabI ins} (TLabI{x = x}{s} .ins) = TLabI{x = x}{s} ins
   ext {N} {Γ} {Δ} {∇} {S} {LabE f e} (TLabEl{f = .f} f' j) = TLabEl (λ l i → ext{N}{Γ}{Δ}{∇} (f' l i)) (ext{N}{Γ}{Δ}{∇} j)
-  ext {N} {Γ} {Δ} {∇} {S} {LabE f .(Var _)} (TLabEx {f = .f} f' (TVar{m = m} x))
+  ext {N} {Γ} {[]} {∇} {S} {LabE f .(Var m)} (TLabEx {s = s} {f = .f} f' (TVar {m = m} x))
+    rewrite (↑ᴺ⁰-refl{N}{length ∇}{m})
+          | (f-ext (λ l → f-ext (λ i → ↑⁰-refl{N}{length ∇}{f l i})))
+          = TLabEx f' (TVar x)
+  -- required lemma needs length Δ > 0, hence the case split
+  ext {N} {Γ} {t ∷ Δ} {∇} {S} {LabE f .(Var m)} (TLabEx {s = s} {f = .f} f' (TVar {m = m} x))
     with extract{N}{∇}{Γ} x
   ...  | in-Δ x₁
        with m <ᴺ? length ∇
-  ...     | yes p = TLabEx (λ l i → {!ext (f' l i)!}) (TVar (ext-behind x₁)) -- if m < k, [ m → ↑ₖ x ] (↑ₖ s) ≡ ↑ₖ ([ m ↦ x ] s)
   ...     | no ¬p = contradiction (var-env-< x₁) ¬p
-  ext {N} {Γ} {Δ} {∇} {S} {LabE f .(Var _)} (TLabEx {f = .f} f' (TVar{m = m} x))
+  ...     | yes p
+          with (λ l i → ext{N}{Γ}{t ∷ Δ}{∇} (f' l i))
+  ...        | w = TLabEx (rw w) (TVar (ext-behind x₁)) -- if m < k, [ m → ↑ₖ x ] (↑ₖ s) ≡ ↑ₖ ([ m ↦ x ] s)
+ 
+          where rw : ((l : Fin N) → (i : l ∈ s) → (∇ ++ (t ∷ Δ) ++ Γ) ⊢ ↑ + length (t ∷ Δ) , length ∇ [ [ m ↦ LabI i ] (f l i) ] ∶ S)
+                   → ((l : Fin N) → (i : l ∈ s) → (∇ ++ (t ∷ Δ) ++ Γ) ⊢ [ m ↦ LabI i ] ↑ + length (t ∷ Δ) , length ∇ [ f l i ] ∶ S)
+                rw q l i
+                  with q l i              
+                ...  | w
+                     rewrite (subst-shift-swap{N}{+ length (t ∷ Δ)}{m}{length ∇}{f l i}{LabI i} (+<+ (s≤s z≤n)))
+                     with m <ᴺ? length ∇
+                ...     | yes p = w 
+                ...     | no ¬p = contradiction p ¬p
+  ext {N} {Γ} {t ∷ Δ} {∇} {S} {LabE f .(Var _)} (TLabEx {s = s}{f = .f} f' (TVar{m = m} x))
        | in-Γ x₁ x₂
        with m <ᴺ? length ∇
   ...     | yes p = contradiction x₁ (<⇒≱ p)
-  ...     | no ¬p = {!!}
---          rewrite ((subst-shift-swap {N} {+ length Δ} {m} {length ∇} {f l i} {LabI i} {!!})) -- length Δ = 0 trivial
---          = TLabEx (λ l i → {!ext (f' l i)!}) (TVar {!ext-front{N}{m ∸ length ∇}{Γ}{∇ ++ Δ} x₂!})    -- ↑ˡₖ ([ m → x ] s) ≡ [ ↑ˡₖ m → ↑ˡₖ x ] ↑ˡₖ s
+  ...     | no ¬p
+          with (λ l i → (ext{N}{Γ}{t ∷ Δ}{∇} (f' l i))) | (ext-front{N}{m ∸ length ∇}{Γ}{∇ ++ (t ∷ Δ)} x₂)
+  ...        | w | w'
+             rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{t ∷ Δ})
+                   | (sym (+-assoc (m ∸ length ∇) (length ∇) (length (t ∷ Δ))))
+                   | (m∸n+n≡m{m}{length ∇} (≮⇒≥ ¬p))
+                   | (++-assoc{lzero}{Ty}{∇}{t ∷ Δ}{Γ})
+                  = TLabEx (rw w) (TVar w')
+                  
+             where rw : ((l : Fin N) → (i : l ∈ s) → ((∇ ++ (t ∷ Δ) ++ Γ) ⊢ ↑ + length (t ∷ Δ) , length ∇ [ [ m ↦ LabI i ] f l i ] ∶ S))
+                      → ((l : Fin N) → (i : l ∈ s) → ((∇ ++ (t ∷ Δ) ++ Γ) ⊢ [ m +ᴺ length (t ∷ Δ) ↦ LabI i ] ↑ + length (t ∷ Δ) , length ∇ [ f l i ] ∶ S))
+                   rw q l i
+                     with q l i
+                   ...  | w
+                        rewrite (subst-shift-swap {N} {+ length (t ∷ Δ)} {m} {length ∇} {f l i} {LabI i} (+<+ (s≤s z≤n)))
+                        with m <ᴺ? length ∇
+                   ...     | yes p = contradiction x₁ (<⇒≱ p)
+                   ...     | no ¬p =  w 
 
-  --   subst-shift-swap : {n : ℕ} {k : ℤ} {x q : ℕ} {s e : Exp {n}} → k >ᶻ + 0 → ↑ k , q [ [ x ↦ e ] s ] ≡ [ ↑ᴺ k , q [ x ] ↦ ↑ k , q [ e ] ] ↑ k , q [ s ]
+
 
 
 {-
