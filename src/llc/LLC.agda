@@ -637,32 +637,11 @@ module operational where
     with m ≟ᴺ length Δ | preserve-subst (TVar z) j'
   ...  | yes p | w rewrite p = contradiction (env-type-equiv z) (λ ())
   ...  | no ¬p | w = TLabEx {!!} w
-       where rw : ((l : Fin n) → (i : l ∈ s') → (Δ ++ Γ) ⊢ ↑ -[1+ 0 ] , length Δ [ [ length Δ ↦ Abs ↑ +[1+ length Δ ] , 1 [ s ] ] ([ m ↦ LabI i ] f l i) ] ∶ T)
-                → (l : Fin n) → (i : l ∈ s') → (Δ ++ Γ) ⊢ [ ↑ᴺ -[1+ 0 ] , length Δ [ m ] ↦ LabI i ] (↑ -[1+ 0 ] , length Δ [ [ length Δ ↦ Abs ↑ +[1+ length Δ ] , 1 [ s ] ] f l i ]) ∶ T
-             rw q l i
-               with q l i
-             ...  | w'
-                  with m <ᴺ? length Δ
-             ...     | yes p' = {!w'!}
-             ...     | no ¬p' = {!!}  --- ?
   preserve-subst {n} {T} {(Label s)} {Γ} {Δ} {LabE{s = s'} f .(Var m)} {LabI {s = .s} x} {v} (TLabEx {m = m}{s = .s'} f' (TVar{T = Label .s'} z)) (TLabI{x = l}{s = .s} .x)
     with m ≟ᴺ length Δ | preserve-subst (TVar z) (TLabI x)
   ...  | yes p | w
        rewrite p
-             | subset-eq (env-type-equiv z) =  (TLabEl{f = λ l₁ i → ↑ -[1+ 0 ] , length Δ [ [ length Δ ↦ LabI x ] (f l₁ i) ]} (λ l₁ i → {!f' l₁ i!}) (TLabI x))
-
-{- TLabEl (λ l i → {!preserve-subst (f' l i) (TLabI x)!}) w
-
-Goal: (Δ ++ Γ) ⊢
-      ↑ -[1+ 0 ] , foldr (λ _ → ℕ.suc) 0 Δ [
-      [ foldr (λ _ → ℕ.suc) 0 Δ ↦ LabI x ] f l i ]
-      ∶ T
-Have: (Δ ++ Γ) ⊢
-      ↑ -[1+ 0 ] , length Δ [
-      [ length Δ ↦ LabI x ] ([ foldr (λ _ → ℕ.suc) 0 Δ ↦ LabI i ] f l i)
-      ]
-      ∶ T
--}          
+             | subset-eq (env-type-equiv z) =  (TLabEl{f = λ l₁ i → ↑ -[1+ 0 ] , length Δ [ [ length Δ ↦ LabI x ] (f l₁ i) ]} (λ l₁ i → {!preserve-subst (f' l₁ i) (TLabI x)!}) (TLabI x))      
   ...  | no ¬p | w = TLabEx (λ l i → {!!}) w
 
   -- preservation theorem, i.e. a well-typed expression reduces to a well-typed expression
@@ -673,3 +652,28 @@ Have: (Δ ++ Γ) ⊢
   preserve {n} {T} {Γ} (App (Abs e) s') .(↑ -[1+ 0 ] , 0 [ [ 0 ↦ ↑ + 1 , 0 [ s' ] ] e ]) (TApp (TAbs j) j') (β-App x) = preserve-subst{Δ = []} j j'
   preserve {n} {T} {Γ} (LabE f (LabI ins)) .(f _ ins) (TLabEl f' j) (β-LabE{x = x} ins) = f' x ins
   
+
+
+{-
+       where rw : ((l : Fin n) → (i : l ∈ s') → (Δ ++ Γ) ⊢ ↑ -[1+ 0 ] , length Δ [ [ length Δ ↦ Abs ↑ +[1+ length Δ ] , 1 [ s ] ] ([ m ↦ LabI i ] f l i) ] ∶ T)
+                → (l : Fin n) → (i : l ∈ s') → (Δ ++ Γ) ⊢ [ ↑ᴺ -[1+ 0 ] , length Δ [ m ] ↦ LabI i ] (↑ -[1+ 0 ] , length Δ [ [ length Δ ↦ Abs ↑ +[1+ length Δ ] , 1 [ s ] ] f l i ]) ∶ T
+             rw q l i
+               with q l i
+             ...  | w'
+                  with m <ᴺ? length Δ
+             ...     | yes p' = {!w'!}
+             ...     | no ¬p' = {!!}  --- ?
+-}
+{-
+TLabEl (λ l i → {!preserve-subst (f' l i) (TLabI x)!}) w
+
+Goal: (Δ ++ Γ) ⊢
+      ↑ -[1+ 0 ] , foldr (λ _ → ℕ.suc) 0 Δ [
+      [ foldr (λ _ → ℕ.suc) 0 Δ ↦ LabI x ] f l i ]
+      ∶ T
+Have: (Δ ++ Γ) ⊢
+      ↑ -[1+ 0 ] , length Δ [
+      [ length Δ ↦ LabI x ] ([ foldr (λ _ → ℕ.suc) 0 Δ ↦ LabI i ] f l i)
+      ]
+      ∶ T
+-}    
