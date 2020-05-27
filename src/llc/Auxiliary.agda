@@ -8,6 +8,9 @@ open import Data.Integer renaming (_+_ to _+ᶻ_ ; _≤_ to _≤ᶻ_ ; _≥_ to 
 import Data.Integer.Properties
 open import Relation.Binary.PropositionalEquality
 open import Relation.Nullary
+open import Relation.Nullary.Negation
+open import Data.Product
+open import Data.Sum
 
 -- lists & length
 
@@ -46,6 +49,9 @@ A++B++D∷[]++C≡A++B++D∷C {a} {s} {x ∷ A} {B} {C} {D} = cong (_∷_ x) (A+
 
 
 -- natural numbers
+
+n≢m⇒sucn≢sucm : {n m : ℕ} → n ≢ m → ℕ.suc n ≢ ℕ.suc m
+n≢m⇒sucn≢sucm {n} {m} neq = λ x → contradiction (cong Data.Nat.pred x) neq
 
 n+1≡sucn : {n : ℕ} → n +ᴺ 1 ≡ ℕ.suc n
 n+1≡sucn {zero} = refl
@@ -168,3 +174,14 @@ minus-1 {y} {x} {lt}
 
 k≥0⇒∣+x+k∣≡x+k : {x k : ℕ} → ∣ + x +ᶻ + k ∣ ≡ x +ᴺ k
 k≥0⇒∣+x+k∣≡x+k {x} {k} = refl
+
+
+-- products & sums
+
+-- deMorgan on products and sums
+dm1 : {P Q : Set} → (¬ P × ¬ Q) → ¬ (P ⊎ Q)
+dm1 {P} {Q} (fst , snd) (inj₁ x) = contradiction x fst
+dm1 {P} {Q} (fst , snd) (inj₂ y) = contradiction y snd
+
+dm2 : {P Q : Set} → ¬ (P ⊎ Q) → (¬ P × ¬ Q)
+dm2 {P} {Q} d = (λ x → contradiction (inj₁ x) d) , λ x → contradiction (inj₂ x) d
