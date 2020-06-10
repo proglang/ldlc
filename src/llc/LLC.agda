@@ -117,7 +117,8 @@ module defs where
     TAbs : {Γ : Env} {T₁ T₂ : Ty} {e : Exp} → (T₁ ∷ Γ) ⊢ e ∶ T₂ → Γ ⊢ (Abs e) ∶ (Fun T₁ T₂)
     TApp : {Γ : Env} {T₁ T₂ : Ty} {e₁ e₂ : Exp} → Γ ⊢ e₁ ∶ (Fun T₁ T₂) → Γ ⊢ e₂ ∶ T₁ → Γ ⊢ (App e₁ e₂) ∶ T₂
     TLabI : {Γ : Env} {x : Fin n} {s : Subset n} → (ins : x ∈ s) → Γ ⊢ LabI x ∶ Label {n} s
-    TLabEl : {Γ : Env} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} → Γ ⊢ f x ins ∶ T
+    TLabEl : {Γ : Env} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} {scopecheck : ∀ l i n → n ∈` (f l i) → n <ᴺ length Γ}
+                                                                                                 → Γ ⊢ f x ins ∶ T
                                                                                                  → Γ ⊢ LabI {n} x ∶ Label {n} s
                                                                                                  → Γ ⊢ LabE {n} {s} f (LabI {n} x) ∶ T
     TLabEx : {Γ : Env} {T : Ty} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ T))
@@ -385,53 +386,6 @@ module operational where
   inv-in-labe : {N n : ℕ} {s : Subset N} {f : (∀ l → l ∈ s → Exp {N})} {e : Exp {N}} → _∈`_ {N} n (LabE {N} {s} f e) → (∃₂ λ l i → n ∈` (f l i)) ⊎ n ∈` e
   inv-in-labe {N} {n} {s} {f} {e} (in-LabE d) = d
 
-{-
-  -- decidable variable in expression
-  _∈`?_ : {N : ℕ} (n : ℕ) (e : Exp {N}) → Dec (n ∈` e)
-  _∈`?_{N} n (Var x)
-    with x ≟ᴺ n
-  ...  | yes p rewrite p = yes in-Var
-  ...  | no ¬p = no (contraposition (inv-in-var {N} {n} {x}) (≢-sym ¬p))
-  n ∈`? Abs e
-    with (ℕ.suc n) ∈`? e
-  ...  | yes p = yes (in-Abs p)
-  ...  | no ¬p = no (contraposition inv-in-abs ¬p)
-  n ∈`? App e e₁
-    with n ∈`? e | n ∈`? e₁
-  ...  | yes p | _      = yes (in-App (inj₁ p))
-  ...  | _   | yes p'   = yes (in-App (inj₂ p'))
-  ...  | no ¬p | no ¬p' = no (contraposition inv-in-app (dm1 (¬p , ¬p')))
-  n ∈`? LabI x = no λ ()
-  n ∈`? LabE {s = s} f e
-    with n ∈`? e
-  ...  | yes p = yes (in-LabE (inj₂ p))
-  ...  | no ¬p
-       with any? λ x → n ∈`? {!!}     
-  ...     | w = {!w!}
---  ...     | yes q = {!!}
---  ...     | no ¬q 
---    = yes (in-LabE (inj₁ {!!}))
-
-issue: decidability of predicate on elements of a subset 
-
--- nope, works on elements of a vector (in subset case, "true"/"false")
-any : Decidable P → ∀ {n} → Decidable (Any P {n})
-any P? []       = no λ()
-any P? (x ∷ xs) = Dec.map′ fromSum toSum (P? x ⊎-dec any P? xs)
-
--- nope, works on Fins, but we require a proof element of subset
-any? : ∀ {n p} {P : Fin n → Set p} → Decidable P → Dec (∃ P)
-any? {zero}  {P = _} P? = no λ { (() , _) }
-any? {suc n} {P = P} P? = Dec.map ⊎⇔∃ (P? zero ⊎-dec any? (P? ∘ suc))
-
--- nope, works on Subsets
-anySubset? : ∀ {p n} {P : Pred (Subset n) p} → Decidable P → Dec ∃⟨ P ⟩
-anySubset? {n = zero}  P? = Dec.map ∃-Subset-[]-⇔ (P? [])
-anySubset? {n = suc n} P? =
-  Dec.map ∃-Subset-∷-⇔ (anySubset? (P? ∘ ( inside ∷_)) ⊎-dec
-                        anySubset? (P? ∘ (outside ∷_)))
--}
-
   notin-shift : {N n k q : ℕ} {e : Exp {N}} → n ≥ᴺ q → ¬ n ∈` e → ¬ ((n +ᴺ k) ∈` ↑ + k , q [ e ])
   notin-shift {N} {n} {k} {q} {Var x} geq j z
     with x <ᴺ? q
@@ -456,6 +410,10 @@ anySubset? {n = suc n} P? =
     with dm2 (contraposition in-LabE j) | (inv-in-labe z)
   ...  | fst , snd | inj₂ y = notin-shift geq snd y
   ...  | fst , snd | inj₁ (fst₁ , fst₂ , snd₁) = notin-shift geq (¬∃⟶∀¬ (¬∃⟶∀¬ fst fst₁) fst₂) snd₁
+
+  -- corollary
+  notin-shift-one : {N n : ℕ} {e : Exp{N}} → ¬ n ∈` e → ¬ (ℕ.suc n ∈` ↑¹[ e ])
+  notin-shift-one {N} {n} {e} nin rewrite (sym (n+1≡sucn{n})) = notin-shift{N}{n}{1} z≤n nin
   
   -- if n ∉ fv(e), then substitution of n does not do anything
   subst-refl-notin : {N n : ℕ} {e e' : Exp {N}} → ¬ n ∈` e → [ n ↦ e' ] e ≡ e
@@ -492,7 +450,19 @@ anySubset? {n = suc n} P? =
 
   subst2-refl-notin : {N n : ℕ} {e e' s : Exp {N}} → ¬ n ∈` e' → [ n ↦ e ] ([ n ↦ e' ] s) ≡ [ n ↦ e' ] s
   subst2-refl-notin {N} {n} {e} {e'} {s} nin = subst-refl-notin (notin-subst{e = s} nin)
- 
+
+  -- if n ∈ [ m ↦ s ] e, n ∉ s, then n ≢ m
+  subst-in-neq : {N n m : ℕ} {e s : Exp{N}} → ¬ n ∈` s → n ∈` ([ m ↦ s ] e) → n ≢ m
+  subst-in-neq {N} {n} {m} {Var x} {s} nin ins
+    with x ≟ᴺ m
+  ...  | yes p = contradiction ins nin
+  subst-in-neq {N} {.x} {m} {Var x} {s} nin in-Var | no ¬p = ¬p
+  subst-in-neq {N} {n} {m} {Abs e} {s} nin (in-Abs ins) = sucn≢sucm⇒n≢m (subst-in-neq{e = e} (notin-shift-one nin) ins)
+  subst-in-neq {N} {n} {m} {App e e₁} {s} nin (in-App (inj₁ x)) = subst-in-neq{e = e} nin x
+  subst-in-neq {N} {n} {m} {App e e₁} {s} nin (in-App (inj₂ y)) = subst-in-neq{e = e₁} nin y
+  subst-in-neq {N} {n} {m} {LabE f e} {s} nin (in-LabE (inj₁ (fst , fst₁ , snd))) = subst-in-neq{e = f fst fst₁} nin snd
+  subst-in-neq {N} {n} {m} {LabE f e} {s} nin (in-LabE (inj₂ y)) = subst-in-neq{e = e} nin y
+
   -- if n ≢ m, n ∈` e, then n ∈` [ m ↦ e' ] e
   subst-in : {N n m : ℕ} {e e' : Exp {N}} → n ≢ m → n ∈` e → n ∈` ([ m ↦ e' ] e)
   subst-in {N} {n} {m} {Var x} {e'} neq (in-Var)
@@ -509,6 +479,18 @@ anySubset? {n = suc n} P? =
   ...  | inj₁ (fst , fst₁ , snd) = in-LabE (inj₁ (fst , (fst₁ , (subst-in neq snd))))
   ...  | inj₂ y = in-LabE (inj₂ (subst-in neq y))
 
+  -- if n ≢ m, n ∉ e', n ∈ [ m ↦ e' ] e, then n ∈ e
+  subst-in-reverse : {N n m : ℕ} {e e' : Exp {N}} → n ≢ m → ¬ (n ∈` e') → n ∈` ([ m ↦ e' ] e) → n ∈` e
+  subst-in-reverse {N} {n} {m} {Var x} {e'} neq nin ins
+    with x ≟ᴺ m
+  ...  | yes p = contradiction ins nin
+  ...  | no ¬p = ins
+  subst-in-reverse {N} {n} {m} {Abs e} {e'} neq nin (in-Abs ins) = in-Abs (subst-in-reverse (n≢m⇒sucn≢sucm neq) (notin-shift-one{N}{n}{e'} nin) ins)
+  subst-in-reverse {N} {n} {m} {App e e₁} {e'} neq nin (in-App (inj₁ x)) = in-App (inj₁ (subst-in-reverse neq nin x))
+  subst-in-reverse {N} {n} {m} {App e e₁} {e'} neq nin (in-App (inj₂ y)) = in-App (inj₂ (subst-in-reverse neq nin y))
+  subst-in-reverse {N} {n} {m} {LabE f e} {e'} neq nin (in-LabE (inj₁ (fst , fst₁ , snd))) = in-LabE (inj₁ (fst , (fst₁ , subst-in-reverse{e = f fst fst₁} neq nin snd)))
+  subst-in-reverse {N} {n} {m} {LabE f e} {e'} neq nin (in-LabE (inj₂ y)) = in-LabE (inj₂ (subst-in-reverse neq nin y))
+
   var-env-< : {N : ℕ} {Γ : Env {N}} {T : Ty} {n : ℕ} (j : n ∶ T ∈ Γ) → n <ᴺ (length Γ)
   var-env-< {N} {.(T ∷ _)} {T} {.0} here = s≤s z≤n
   var-env-< {N} {.(_ ∷ _)} {T} {.(ℕ.suc _)} (there j) = s≤s (var-env-< j)
@@ -523,13 +505,11 @@ anySubset? {n = suc n} P? =
     with z
   ...  | inj₁ x = free-vars-env-< j n x
   ...  | inj₂ y = free-vars-env-< j' n y
-  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl j j') = {!free-vars-env-< j!}
-  {-
-  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl j j') n (in-LabE z)
+--   free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl{scopecheck = s} j j')
+  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl{scopecheck = s} j j') n (in-LabE z)
     with z
-  ...  | inj₁ (fst , fst₁ , snd) = free-vars-env-< j n {!!}
+  ...  | inj₁ (fst , fst₁ , snd) = s fst fst₁ n snd
   ...  | inj₂ ()
-  -}
   free-vars-env-< {N} {LabE f (Var m)} {Γ} {T} (TLabEx f' (TVar j)) n (in-LabE z)
     with n ≟ᴺ m
   ...  | yes p rewrite p = var-env-< j
@@ -571,6 +551,18 @@ anySubset? {n = suc n} P? =
   closed-no-shift : {n : ℕ} {k : ℤ} {q : ℕ} {e : Exp {n}} {T : Ty {n}} → [] ⊢ e ∶ T → ↑ k , q [ e ] ≡ e
   closed-no-shift {n} {k} {zero} {e} {T} j = shift-env-size (free-vars-env-< j)
   closed-no-shift {n} {k} {ℕ.suc q} {e} {T} j = shift-env-size λ n i → <-trans (free-vars-env-< j n i) (s≤s z≤n)
+
+  -- 
+  subst-change-in : {N n m : ℕ} {e s s' : Exp{N}} → ¬ (n ∈` s) × ¬ (n ∈` s') → n ∈` ([ m ↦ s ] e) → n ∈` ([ m ↦ s' ] e)
+  subst-change-in {N} {n} {m} {Var x} {s} {s'} (fst , snd) ins
+    with x ≟ᴺ m
+  ...  | yes eq = contradiction ins fst
+  ...  | no ¬eq = ins
+  subst-change-in {N} {n} {m} {Abs e} {s} {s'} (fst , snd) (in-Abs ins) = in-Abs (subst-change-in{N}{ℕ.suc n}{ℕ.suc m}{e} (notin-shift-one{N}{n}{s} fst , notin-shift-one{N}{n}{s'} snd) ins)
+  subst-change-in {N} {n} {m} {App e e₁} {s} {s'} p (in-App (inj₁ x)) = in-App (inj₁ (subst-change-in{N}{n}{m}{e} p x))
+  subst-change-in {N} {n} {m} {App e e₁} {s} {s'} p (in-App (inj₂ y)) = in-App (inj₂ (subst-change-in{N}{n}{m}{e₁} p y))
+  subst-change-in {N} {n} {m} {LabE f e} {s} {s'} p (in-LabE (inj₁ (fst , fst₁ , snd))) = in-LabE (inj₁ (fst , (fst₁ , (subst-change-in{N}{n}{m}{f fst fst₁}{s}{s'} p snd))))
+  subst-change-in {N} {n} {m} {LabE f e} {s} {s'} p (in-LabE (inj₂ y)) = in-LabE (inj₂ (subst-change-in {N} {n} {m} {e} p y))
 
   -- swapping of substitutions A & B if variables of A are not free in substitution term of B and vice versa
   subst-subst-swap : {N n m : ℕ} {e e' s : Exp {N}} → n ≢ m → ¬ n ∈` e' → ¬ m ∈` e → [ n ↦ e ] ([ m ↦ e' ] s) ≡ [ m ↦ e' ] ([ n ↦ e ] s)
@@ -731,6 +723,29 @@ anySubset? {n = suc n} P? =
 
   -- extension of environment
 
+  -- lemma required for ∈`
+  ext-∈` : {N m k q : ℕ} {e : Exp {N}} → (∀ n → n ∈` e → n <ᴺ m) → (∀ n → n ∈` ↑ + k , q [ e ] → n <ᴺ m +ᴺ k)
+  ext-∈` {N} {m} {k} {q} {Var x} f n ins
+    with x <ᴺ? q
+  ...  | yes p = ≤-trans (f n ins) (≤-stepsʳ{m}{m} k ≤-refl)
+  ext-∈` {N} {m} {k} {q} {Var x} f .(x +ᴺ k) in-Var | no ¬p = Data.Nat.Properties.+-monoˡ-≤ k (f x in-Var)
+  ext-∈` {N} {m} {k} {q} {Abs e} f n (in-Abs ins) = ≤-pred (ext-∈` {N} {ℕ.suc m} {k} {ℕ.suc q} {e = e} (extr f) (ℕ.suc n) ins)
+    where extr : (∀ n → n ∈` Abs e → n <ᴺ m) → (∀ n → n ∈` e → n <ᴺ ℕ.suc m)
+          extr f zero ins = s≤s z≤n
+          extr f (ℕ.suc n) ins = s≤s (f n (in-Abs ins))
+  ext-∈` {N} {m} {k} {q} {App e e₁} f n (in-App (inj₁ x)) = ext-∈`{N}{m}{k}{q}{e} (extr f) n x
+    where extr : (∀ n → n ∈` App e e₁ → n <ᴺ m) → (∀ n → n ∈` e → n <ᴺ m)
+          extr f n ins = f n (in-App (inj₁ ins))
+  ext-∈` {N} {m} {k} {q} {App e e₁} f n (in-App (inj₂ y)) = ext-∈`{N}{m}{k}{q}{e₁} (extr f) n y
+    where extr : (∀ n → n ∈` App e e₁ → n <ᴺ m) → (∀ n → n ∈` e₁ → n <ᴺ m)
+          extr f n ins = f n (in-App (inj₂ ins))
+  ext-∈` {N} {m} {k} {q} {LabE f₁ e} f n (in-LabE (inj₁ (fst , fst₁ , snd))) = ext-∈`{N}{m}{k}{q}{f₁ fst fst₁} (extr f) n snd
+    where extr : (∀ n → n ∈` LabE f₁ e → n <ᴺ m) → (∀ n → n ∈` f₁ fst fst₁ → n <ᴺ m)
+          extr f n ins = f n (in-LabE (inj₁ (fst , (fst₁ , ins))))
+  ext-∈` {N} {m} {k} {q} {LabE f₁ e} f n (in-LabE (inj₂ y)) = ext-∈`{N}{m}{k}{q}{e} (extr f) n y
+    where extr : (∀ n → n ∈` LabE f₁ e → n <ᴺ m) → (∀ n → n ∈` e → n <ᴺ m)
+          extr f n ins = f n (in-LabE (inj₂ ins))
+
   ext : {N : ℕ} {Γ Δ ∇ : Env {N}} {S : Ty} {s : Exp} → (∇ ++ Γ) ⊢ s ∶ S → (∇ ++ Δ ++ Γ) ⊢ ↑ (ℤ.pos (length Δ)) , length ∇ [ s ] ∶ S
   ext {N} {Γ} {Δ} {∇} (TVar {m = n} x)
     with extract{N}{∇}{Γ} x
@@ -753,7 +768,15 @@ anySubset? {n = suc n} P? =
   ext {N} {Γ} {Δ} {∇} {Fun T₁ T₂} {Abs e} (TAbs j) = TAbs (ext{N}{Γ}{Δ}{T₁ ∷ ∇} j)
   ext {N} {Γ} {Δ} {∇} {S} {App s₁ s₂} (TApp{T₁ = T₁} j₁ j₂) = TApp (ext{N}{Γ}{Δ}{∇}{Fun T₁ S} j₁) (ext{N}{Γ}{Δ}{∇}{T₁} j₂)
   ext {N} {Γ} {Δ} {∇} {S} {LabI l} (TLabI{x = x}{s} ins) = TLabI{x = x}{s} ins
-  ext {N} {Γ} {Δ} {∇} {S} {LabE f e} (TLabEl{ins = ins}{f = .f} j j') = TLabEl{ins = ins} (ext{N}{Γ}{Δ}{∇} j) (ext{N}{Γ}{Δ}{∇} j')
+  ext {N} {Γ} {Δ} {∇} {S} {LabE f e} (TLabEl{ins = ins}{f = .f}{scopecheck = s} j j') = TLabEl{ins = ins}
+                                                                                              {scopecheck = λ l i n x₁ → rw n (ext-∈`{N}{length (∇ ++ Γ)}{length Δ}{length ∇}{f l i} (s l i) n x₁)}
+                                                                                              (ext{N}{Γ}{Δ}{∇} j) (ext{N}{Γ}{Δ}{∇} j')
+    where rw : ∀ n → n <ᴺ length (∇ ++ Γ) +ᴺ length Δ → n <ᴺ length (∇ ++ Δ ++ Γ)
+          rw n a rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{Γ})
+                       | (+-assoc (length ∇) (length Γ) (length Δ))
+                       | (+-comm (length Γ) (length Δ))
+                       | sym (length[A++B]≡length[A]+length[B]{lzero}{Ty}{Δ}{Γ})
+                       | sym (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{Δ ++ Γ}) = a
   ext {N} {Γ} {[]} {∇} {S} {LabE f .(Var m)} (TLabEx {s = s} {f = .f} f' (TVar {m = m} x))
     rewrite (↑ᴺ⁰-refl{N}{length ∇}{m})
           | (f-ext (λ l → f-ext (λ i → ↑⁰-refl{N}{length ∇}{f l i})))
@@ -881,7 +904,14 @@ anySubset? {n = suc n} P? =
              = TAbs w 
   preserve-subst' {n} {T} {S} {Δ} {(App e e')} {s} {v} (TApp j j₁) j' = TApp (preserve-subst'{v = v} j j') (preserve-subst'{v = v} j₁ j')
   preserve-subst' {n} {T} {S} {Δ} {LabI x} {s} {v} (TLabI ins) j' = TLabI ins
-  preserve-subst' {n} {T} {S} {Δ} {LabE f (LabI x)} {s} {v} (TLabEl{ins = ins} j j') j'' = TLabEl{ins = ins} (preserve-subst'{v = v} j j'') (TLabI ins)
+  preserve-subst' {n} {T} {S} {Δ} {LabE{s = s'} f (LabI x)} {s} {v} (TLabEl{ins = ins}{scopecheck = sc} j j') j'' = TLabEl{ins = ins}{scopecheck = scopecheck} (preserve-subst'{v = v} j j'') (TLabI ins)
+    where scopecheck : (l : Fin n) (i : l ∈ s') (n' : ℕ) → n' ∈` ([ length Δ ↦ s ] f l i) → n' <ᴺ length Δ
+          scopecheck l i n' ins
+            with subst-in-neq{n}{n'}{length Δ}{f l i}{s} (closed-free-vars j'' n') ins
+          ...  | w
+               with (sc l i n' (subst-in-reverse{n}{n'}{length Δ}{e' = s} w (closed-free-vars j'' n') ins))
+          ...     | w'
+                  rewrite (length[A++B∷[]]≡suc[length[A]]{lzero}{Ty}{Δ}{S}) = ≤∧≢⇒< (≤-pred w') w
   preserve-subst' {n} {T} {.(Fun _ _)} {Δ} {LabE f (Var m)} {Abs e} {VFun} (TLabEx f' (TVar{T = Label s} z)) (TAbs j')
     with m ≟ᴺ length Δ | preserve-subst'{v = VFun} (TVar z) (TAbs j')
   ...  | yes p | _ rewrite p = contradiction (env-type-equiv z) λ ()
@@ -897,13 +927,22 @@ anySubset? {n = suc n} P? =
   ...  | yes p | w
        rewrite p
              | subset-eq (env-type-equiv z)
-             =  TLabEl{f = λ l i → [ length Δ ↦ LabI x ] (f l i)} (rw{e = f x ins} (preserve-subst'{v = VLab} (f' x ins) (TLabI{s = s'} ins))) w 
+             =  TLabEl{f = λ l i → [ length Δ ↦ LabI x ] (f l i)}{scopecheck } (rw{e = f x ins} (preserve-subst'{v = VLab} (f' x ins) (TLabI{s = s'} ins))) w 
        where 
              -- agda didn't let me rewrite this directly
              rw :  {e : Exp} →  (Δ ⊢ [ length Δ ↦ LabI x ] ([ length Δ ↦ LabI x ] e) ∶ T)
                              → ( Δ ⊢ [ length Δ ↦ LabI x ] e ∶ T)
              rw {e} j
                rewrite sym (subst2-refl-notin{n}{length Δ}{LabI x}{LabI x}{e} (λ ())) = j
+             -- if n ∈` [length Δ ↦ LabI x] (f l i), then also n ∈` [length Δ ↦ LabI l] (f l i), since both LabI l and LabI x are closed
+             -- if n ∈` [length Δ ↦ LabI l] (f l i), then n < length (Δ ++ (S ∷ [])), we get this from f' ((Δ ++ S ∷ []) ⊢ [length Δ ↦ LabI l] (f l i) ∶ T) and free-vars-env-<
+             -- if n ∈` [length Δ ↦ LabI l] (f l i), then also n ≢ (length Δ), since LabI closed
+             -- hence n < length (Δ ++ (S ∷ [])) = length Δ + 1 ⇒ n ≤ length Δ, n ≤ length Δ and n ≢ length Δ implies n < length Δ
+             scopecheck : (l : Fin n) (i : l ∈ s') (n' : ℕ) → n' ∈` ([ length Δ ↦ LabI x ] f l i) → n' <ᴺ length Δ
+             scopecheck l i n' ins
+               with (free-vars-env-< (f' l i) n' (subst-change-in{n}{n'}{length Δ}{f l i}{LabI x}{LabI l} ((λ ()) , (λ ())) ins))       
+             ...  | w
+                  rewrite (length[A++B∷[]]≡suc[length[A]]{lzero}{Ty}{Δ}{Label s'})= ≤∧≢⇒< (≤-pred w) (subst-in-neq{n}{n'}{length Δ}{f l i}{LabI x} (λ ()) ins)
   ...  | no ¬p | w = TLabEx (rw λ l i → preserve-subst'{v = VLab} (f' l i) (TLabI ins)) w
        where rw : ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ length Δ ↦ LabI x ] ([ m ↦ LabI l ] f l i) ∶ T) 
                 → ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ m ↦ LabI l ] ([ length Δ ↦ LabI x ] f l i) ∶ T)

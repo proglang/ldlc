@@ -12,46 +12,14 @@ open import Relation.Nullary.Negation
 open import Data.Product
 open import Data.Sum
 
--- lists & length
-
-++-assoc : {a : Level} {s : Set a} {Δ ∇ Γ : List s} → ((Δ ++ ∇) ++ Γ) ≡ (Δ ++ (∇ ++ Γ))
-++-assoc {a} {s} {[]} {∇} {Γ} = refl
-++-assoc {a} {s} {x ∷ Δ} {∇} {Γ} = cong (_∷_ x) (++-assoc{a}{s}{Δ}{∇}{Γ})
-
-length[A]≥0 : {a : Level} {s : Set a} {A : List s} → length A ≥ᴺ 0
-length[A]≥0 {a} {s} {A} = z≤n
-
-A++[]≡A : {a : Level} {s : Set a} {A : List s} → A ++ [] ≡ A
-A++[]≡A {a} {s} {[]} = refl
-A++[]≡A {a} {s} {x ∷ A} = cong (_∷_ x) (A++[]≡A {a} {s} {A})
-
-n+length[]≡n : {a : Level} {A : Set a} {n : ℕ} → n +ᴺ length{a}{A} [] ≡ n
-n+length[]≡n {a} {A} {zero} = refl
-n+length[]≡n {a} {A} {ℕ.suc n} = cong ℕ.suc (n+length[]≡n{a}{A})
-
-length[A∷B]≡suc[length[B]] : {a : Level} {s : Set a} {A : s} {B : List s} → length (A ∷ B) ≡ ℕ.suc (length B)
-length[A∷B]≡suc[length[B]] {a} {s} {A} {B} = refl
-
-length[A∷B]≥1 : {a : Level} {s : Set a} {A : s} {B : List s} → length (A ∷ B) ≥ᴺ 1
-length[A∷B]≥1 {a} {s} {A} {B} = s≤s z≤n
-
-length[A++B]≡length[A]+length[B] : {a : Level} {s : Set a} {A B : List s} → length (A ++ B) ≡ length A +ᴺ length B
-length[A++B]≡length[A]+length[B] {a} {s} {[]} {B} = refl
-length[A++B]≡length[A]+length[B] {a} {s} {x ∷ A} {B} rewrite length[A∷B]≡suc[length[B]]{a}{s}{x}{A ++ B} = cong ℕ.suc (length[A++B]≡length[A]+length[B]{a}{s}{A}{B})
-
-A++B∷[]++C≡A++B∷C : {a : Level} {s : Set a} {A C : List s} {B : s} → ((A ++ B ∷ []) ++ C) ≡ (A ++ B ∷ C)
-A++B∷[]++C≡A++B∷C {a} {s} {[]} {C} {B} = refl
-A++B∷[]++C≡A++B∷C {a} {s} {x ∷ A} {C} {B} = cong (_∷_ x) A++B∷[]++C≡A++B∷C
-
-A++B++D∷[]++C≡A++B++D∷C : {a : Level} {s : Set a} { A B C : List s} {D : s} → (A ++ B ++ D ∷ []) ++ C ≡ (A ++ B ++ D ∷ C)
-A++B++D∷[]++C≡A++B++D∷C {a} {s} {[]} {B} {C} {D} = A++B∷[]++C≡A++B∷C
-A++B++D∷[]++C≡A++B++D∷C {a} {s} {x ∷ A} {B} {C} {D} = cong (_∷_ x) (A++B++D∷[]++C≡A++B++D∷C{a}{s}{A}{B}{C}{D})
-
 
 -- natural numbers
 
 n≢m⇒sucn≢sucm : {n m : ℕ} → n ≢ m → ℕ.suc n ≢ ℕ.suc m
 n≢m⇒sucn≢sucm {n} {m} neq = λ x → contradiction (cong Data.Nat.pred x) neq
+
+sucn≢sucm⇒n≢m : {n m : ℕ} → ℕ.suc n ≢ ℕ.suc m → n ≢ m
+sucn≢sucm⇒n≢m {n} {m} neq = λ x → contradiction (cong ℕ.suc x) neq
 
 n+1≡sucn : {n : ℕ} → n +ᴺ 1 ≡ ℕ.suc n
 n+1≡sucn {zero} = refl
@@ -120,6 +88,44 @@ m>n⇒m∸n≥1 {ℕ.suc m} {ℕ.suc n} (s≤s le) = m>n⇒m∸n≥1 le
 m∸n≥q⇒m≥q : {m n q : ℕ} → m ∸ n ≥ᴺ q → m ≥ᴺ q
 m∸n≥q⇒m≥q {m} {n} {q} ge = ≤-trans ge (m∸n≤m m n)
 
+
+-- lists & length
+
+++-assoc : {a : Level} {s : Set a} {Δ ∇ Γ : List s} → ((Δ ++ ∇) ++ Γ) ≡ (Δ ++ (∇ ++ Γ))
+++-assoc {a} {s} {[]} {∇} {Γ} = refl
+++-assoc {a} {s} {x ∷ Δ} {∇} {Γ} = cong (_∷_ x) (++-assoc{a}{s}{Δ}{∇}{Γ})
+
+length[A]≥0 : {a : Level} {s : Set a} {A : List s} → length A ≥ᴺ 0
+length[A]≥0 {a} {s} {A} = z≤n
+
+A++[]≡A : {a : Level} {s : Set a} {A : List s} → A ++ [] ≡ A
+A++[]≡A {a} {s} {[]} = refl
+A++[]≡A {a} {s} {x ∷ A} = cong (_∷_ x) (A++[]≡A {a} {s} {A})
+
+n+length[]≡n : {a : Level} {A : Set a} {n : ℕ} → n +ᴺ length{a}{A} [] ≡ n
+n+length[]≡n {a} {A} {zero} = refl
+n+length[]≡n {a} {A} {ℕ.suc n} = cong ℕ.suc (n+length[]≡n{a}{A})
+
+length[A∷B]≡suc[length[B]] : {a : Level} {s : Set a} {A : s} {B : List s} → length (A ∷ B) ≡ ℕ.suc (length B)
+length[A∷B]≡suc[length[B]] {a} {s} {A} {B} = refl
+
+length[A∷B]≥1 : {a : Level} {s : Set a} {A : s} {B : List s} → length (A ∷ B) ≥ᴺ 1
+length[A∷B]≥1 {a} {s} {A} {B} = s≤s z≤n
+
+length[A++B]≡length[A]+length[B] : {a : Level} {s : Set a} {A B : List s} → length (A ++ B) ≡ length A +ᴺ length B
+length[A++B]≡length[A]+length[B] {a} {s} {[]} {B} = refl
+length[A++B]≡length[A]+length[B] {a} {s} {x ∷ A} {B} rewrite length[A∷B]≡suc[length[B]]{a}{s}{x}{A ++ B} = cong ℕ.suc (length[A++B]≡length[A]+length[B]{a}{s}{A}{B})
+
+length[A++B∷[]]≡suc[length[A]] : {a : Level} {s : Set a} {A : List s} {B : s} → length (A ++ B ∷ []) ≡ ℕ.suc (length A)
+length[A++B∷[]]≡suc[length[A]] {a} {s} {A} {B} rewrite (length[A++B]≡length[A]+length[B]{a}{s}{A}{B ∷ []}) = n+1≡sucn
+
+A++B∷[]++C≡A++B∷C : {a : Level} {s : Set a} {A C : List s} {B : s} → ((A ++ B ∷ []) ++ C) ≡ (A ++ B ∷ C)
+A++B∷[]++C≡A++B∷C {a} {s} {[]} {C} {B} = refl
+A++B∷[]++C≡A++B∷C {a} {s} {x ∷ A} {C} {B} = cong (_∷_ x) A++B∷[]++C≡A++B∷C
+
+A++B++D∷[]++C≡A++B++D∷C : {a : Level} {s : Set a} { A B C : List s} {D : s} → (A ++ B ++ D ∷ []) ++ C ≡ (A ++ B ++ D ∷ C)
+A++B++D∷[]++C≡A++B++D∷C {a} {s} {[]} {B} {C} {D} = A++B∷[]++C≡A++B∷C
+A++B++D∷[]++C≡A++B++D∷C {a} {s} {x ∷ A} {B} {C} {D} = cong (_∷_ x) (A++B++D∷[]++C≡A++B++D∷C{a}{s}{A}{B}{C}{D})
 
 -- integers
 
