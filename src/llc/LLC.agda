@@ -16,6 +16,7 @@ open import Data.List
 open import Data.List.Relation.Unary.All
 open import Relation.Unary using (Decidable)
 open import Data.Vec.Relation.Unary.Any
+open import Data.Vec.Base hiding (length ; _++_ ; foldr)
 open import Relation.Binary.PropositionalEquality renaming (trans to ≡-trans)
 open import Relation.Nullary
 open import Relation.Nullary.Decidable
@@ -116,7 +117,7 @@ module defs where
     TAbs : {Γ : Env} {T₁ T₂ : Ty} {e : Exp} → (T₁ ∷ Γ) ⊢ e ∶ T₂ → Γ ⊢ (Abs e) ∶ (Fun T₁ T₂)
     TApp : {Γ : Env} {T₁ T₂ : Ty} {e₁ e₂ : Exp} → Γ ⊢ e₁ ∶ (Fun T₁ T₂) → Γ ⊢ e₂ ∶ T₁ → Γ ⊢ (App e₁ e₂) ∶ T₂
     TLabI : {Γ : Env} {x : Fin n} {s : Subset n} → (ins : x ∈ s) → Γ ⊢ LabI x ∶ Label {n} s
-    TLabEl : {Γ : Env} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ (f l i) ∶ T))
+    TLabEl : {Γ : Env} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} → Γ ⊢ f x ins ∶ T
                                                                                                  → Γ ⊢ LabI {n} x ∶ Label {n} s
                                                                                                  → Γ ⊢ LabE {n} {s} f (LabI {n} x) ∶ T
     TLabEx : {Γ : Env} {T : Ty} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ T))
@@ -140,7 +141,7 @@ module denotational where
   eval (TAbs TJ) Val-Γ = λ V → eval TJ (V ∷ Val-Γ)
   eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
   eval (TLabI {x = x} ins) Val-Γ = x , ins
-  eval (TLabEl {x = x}{ins = ins}{f = f} f' j) Val-Γ = eval (f' x ins) Val-Γ
+  eval (TLabEl {x = x}{ins = ins}{f = f} j j') Val-Γ = eval j Val-Γ
   eval (TLabEx {m = m}{s}{f} f' j) Val-Γ
     with eval j Val-Γ    -- evaluate variable
   ... | x , ins = eval (f' x ins) Val-Γ
@@ -522,10 +523,13 @@ anySubset? {n = suc n} P? =
     with z
   ...  | inj₁ x = free-vars-env-< j n x
   ...  | inj₂ y = free-vars-env-< j' n y
-  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl f' j) n (in-LabE z)
+  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl j j') = {!free-vars-env-< j!}
+  {-
+  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl j j') n (in-LabE z)
     with z
-  ...  | inj₁ (fst , fst₁ , snd) = free-vars-env-< (f' fst fst₁) n snd
+  ...  | inj₁ (fst , fst₁ , snd) = free-vars-env-< j n {!!}
   ...  | inj₂ ()
+  -}
   free-vars-env-< {N} {LabE f (Var m)} {Γ} {T} (TLabEx f' (TVar j)) n (in-LabE z)
     with n ≟ᴺ m
   ...  | yes p rewrite p = var-env-< j
@@ -749,7 +753,7 @@ anySubset? {n = suc n} P? =
   ext {N} {Γ} {Δ} {∇} {Fun T₁ T₂} {Abs e} (TAbs j) = TAbs (ext{N}{Γ}{Δ}{T₁ ∷ ∇} j)
   ext {N} {Γ} {Δ} {∇} {S} {App s₁ s₂} (TApp{T₁ = T₁} j₁ j₂) = TApp (ext{N}{Γ}{Δ}{∇}{Fun T₁ S} j₁) (ext{N}{Γ}{Δ}{∇}{T₁} j₂)
   ext {N} {Γ} {Δ} {∇} {S} {LabI l} (TLabI{x = x}{s} ins) = TLabI{x = x}{s} ins
-  ext {N} {Γ} {Δ} {∇} {S} {LabE f e} (TLabEl{ins = ins}{f = .f} f' j) = TLabEl{ins = ins} (λ l i → ext{N}{Γ}{Δ}{∇} (f' l i)) (ext{N}{Γ}{Δ}{∇} j)
+  ext {N} {Γ} {Δ} {∇} {S} {LabE f e} (TLabEl{ins = ins}{f = .f} j j') = TLabEl{ins = ins} (ext{N}{Γ}{Δ}{∇} j) (ext{N}{Γ}{Δ}{∇} j')
   ext {N} {Γ} {[]} {∇} {S} {LabE f .(Var m)} (TLabEx {s = s} {f = .f} f' (TVar {m = m} x))
     rewrite (↑ᴺ⁰-refl{N}{length ∇}{m})
           | (f-ext (λ l → f-ext (λ i → ↑⁰-refl{N}{length ∇}{f l i})))
@@ -804,40 +808,15 @@ anySubset? {n = suc n} P? =
                  | (A++[]≡A{lzero}{Ty}{Γ})
                  = w
 
+  -- uniqueness of ∈
+  ∈-eq : {N : ℕ} {s : Subset N} {l : Fin N} → (ins : l ∈ s) → (ins' : l ∈ s) → ins ≡ ins'
+  ∈-eq {ℕ.suc n} {.(true ∷ _)} {zero} here here = refl
+  ∈-eq {ℕ.suc n} {(x ∷ s)} {Fin.suc l} (there j) (there j') = cong there (∈-eq j j')
+
   --- general typing properties
-
-  subst-type-lookup : {N : ℕ} {e s : Exp {N}} {v : Val e} {Γ : Env} {T S : Ty} {n : Fin (length Γ)}  → Γ ⊢ [ toℕ n ↦ e ] s ∶ S → [] ⊢ e ∶ T → Data.List.lookup Γ n ≡ T
-
-  
-  type-uniq : {n : ℕ} {e : Exp {n}} {Γ : Env} {T S : Ty} → Γ ⊢ e ∶ T → Γ ⊢ e ∶ S → T ≡ S
-  -- Nope! LabI x can have different Subset Types
-
-
+ 
   subset-eq : {n : ℕ} {s s' : Subset n} → Label s ≡ Label s' → s ≡ s'
   subset-eq {n} {s} {.s} refl = refl
-
-  reverse-subst-preserve : {N : ℕ} {e s : Exp {N}} {S T : Ty} {Γ : Env} → Γ ⊢ [ length Γ ↦ e ] s ∶ T → [] ⊢ e ∶ S → (Γ ++ (S ∷ [])) ⊢ s ∶ T
-  reverse-subst-preserve {N} {e} {Var x} {S} {T} {Γ} j j'
-    with x ≟ᴺ length Γ
-  ...  | yes p rewrite p = {!j!} -- again type equivalence needed
-  reverse-subst-preserve {N} {e} {Var x} {S} {T} {Γ} (TVar x₁) j' | no ¬p = TVar (ext-behind{Γ = S ∷ []} x₁)
-  reverse-subst-preserve {N} {e} {Abs s} {S} {T} {Γ} j j' = {!!}
-  reverse-subst-preserve {N} {e} {App s s₁} {S} {T} {Γ} j j' = {!!}
-  reverse-subst-preserve {N} {e} {LabI x} {S} {T} {Γ} j j' = {!!}
-  reverse-subst-preserve {N} {e} {LabE f s} {S} {T} {Γ} j j' = {!!}
-
---  swap-expr-subst : {N : ℕ} {e e' s : Exp {N}} {v : Val e} {v' : Val e'} {T S : Ty} {Γ : Env} → (Γ ++ (S ∷ []))
-  -- (Γ ++ S ∷ []) ⊢ [length Γ ↦ e] s
-  swap-expr-subst : {N : ℕ} {e e' s : Exp {N}} {T S : Ty} {Γ : Env} → [] ⊢ e ∶ S → [] ⊢ e' ∶ S →  (Γ ++ (S ∷ [])) ⊢ [ length Γ ↦ e ] s ∶ T → (Γ ++ (S ∷ [])) ⊢ [ length Γ ↦ e' ] s ∶ T
-  swap-expr-subst {N} {e} {e'} {Var x} {T} {S} {Γ} j j' j''
-    with x ≟ᴺ length Γ
-  ...  | no ¬p = j''
-  ...  | yes p = {!ext-empty j'!}  -- (Γ ++ (S ∷ [])) ⊢ Var (length Γ) ∶ T, ergo S ≡ T?
-  swap-expr-subst {N} {e} {e'} {Abs s} {T} {S} {Γ} j j' j'' = {!!}
-  swap-expr-subst {N} {e} {e'} {App s s₁} {T} {S} {Γ} j j' j'' = {!!}
-  swap-expr-subst {N} {e} {e'} {LabI x} {T} {S} {Γ} j j' j'' = {!!}
-  swap-expr-subst {N} {e} {e'} {LabE f s} {T} {S} {Γ} j j' j'' = {!!}
-
 
   ---- progress and preservation
 
@@ -902,7 +881,7 @@ anySubset? {n = suc n} P? =
              = TAbs w 
   preserve-subst' {n} {T} {S} {Δ} {(App e e')} {s} {v} (TApp j j₁) j' = TApp (preserve-subst'{v = v} j j') (preserve-subst'{v = v} j₁ j')
   preserve-subst' {n} {T} {S} {Δ} {LabI x} {s} {v} (TLabI ins) j' = TLabI ins
-  preserve-subst' {n} {T} {S} {Δ} {LabE f (LabI x)} {s} {v} (TLabEl{ins = ins} f' j) j' = TLabEl{ins = ins} (λ l i → preserve-subst'{v = v} (f' l i) j') (TLabI ins)
+  preserve-subst' {n} {T} {S} {Δ} {LabE f (LabI x)} {s} {v} (TLabEl{ins = ins} j j') j'' = TLabEl{ins = ins} (preserve-subst'{v = v} j j'') (TLabI ins)
   preserve-subst' {n} {T} {.(Fun _ _)} {Δ} {LabE f (Var m)} {Abs e} {VFun} (TLabEx f' (TVar{T = Label s} z)) (TAbs j')
     with m ≟ᴺ length Δ | preserve-subst'{v = VFun} (TVar z) (TAbs j')
   ...  | yes p | _ rewrite p = contradiction (env-type-equiv z) λ ()
@@ -918,20 +897,13 @@ anySubset? {n = suc n} P? =
   ...  | yes p | w
        rewrite p
              | subset-eq (env-type-equiv z)
-             = TLabEl (rw f') {!!} -- {! TLabEl{f = λ l i → [ length Δ ↦ LabI x ] ([ length Δ ↦ LabI l ] (f l i))} ? w !}
-       ---  TLabEl{ins = ins} (rw (λ l i → preserve-subst'{v = VLab} (f' l i) (TLabI ins))) w
+             =  TLabEl{f = λ l i → [ length Δ ↦ LabI x ] (f l i)} (rw{e = f x ins} (preserve-subst'{v = VLab} (f' x ins) (TLabI{s = s'} ins))) w 
        where 
-             -- agda didn't let me rewrite this directly in rw
-             rw' : {x l : Fin n} {e : Exp} →  (Δ ⊢ [ length Δ ↦ LabI x ] ([ length Δ ↦ LabI x ] e) ∶ T)
-                                           → ( Δ ⊢ [ length Δ ↦ LabI x ] e ∶ T)
-             rw' {x} {l} {e} j
+             -- agda didn't let me rewrite this directly
+             rw :  {e : Exp} →  (Δ ⊢ [ length Δ ↦ LabI x ] ([ length Δ ↦ LabI x ] e) ∶ T)
+                             → ( Δ ⊢ [ length Δ ↦ LabI x ] e ∶ T)
+             rw {e} j
                rewrite sym (subst2-refl-notin{n}{length Δ}{LabI x}{LabI x}{e} (λ ())) = j
-             
-             rw : ((l : Fin n) (i : l ∈ s') → (Δ ++ Label s' ∷ []) ⊢ [ length Δ ↦ LabI l ] f l i ∶ T)
-                → ((l : Fin n) (i : l ∈ s') → Δ ⊢ [ length Δ ↦ LabI x ] f l i ∶ T)
-             rw ρ l i
-               with ρ l i
-             ...  | w  = rw' (preserve-subst' (swap-expr-subst{s = f l i} (TLabI i) (TLabI ins) (f' l i)) (TLabI ins))
   ...  | no ¬p | w = TLabEx (rw λ l i → preserve-subst'{v = VLab} (f' l i) (TLabI ins)) w
        where rw : ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ length Δ ↦ LabI x ] ([ m ↦ LabI l ] f l i) ∶ T) 
                 → ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ m ↦ LabI l ] ([ length Δ ↦ LabI x ] f l i) ∶ T)
@@ -948,40 +920,5 @@ anySubset? {n = suc n} P? =
     rewrite (closed-no-shift {n} {+ 1} {0} {s'} j₁)
           | (closed-no-shift {n} { -[1+ 0 ]} {0} {[ 0 ↦ s' ] e} (preserve-subst'{Δ = []}{v = x} j j₁))
           = preserve-subst'{Δ = []}{v = x} j j₁
-  preserve' {n} {T} (LabE f (LabI l)) .(f x ins) (TLabEl f' j) (β-LabE {x = x} ins) = f' x ins
+  preserve' {n} {T} (LabE f (LabI l)) .(f x ins) (TLabEl{ins = ins'} j j') (β-LabE {x = x} ins) rewrite (∈-eq ins ins') = j
 
-
-
-  
-  -- swapping the expression of a substitution still well-formed if the expression has the same type
-{-
-  swap-expr-subst : {N n : ℕ} {e e' s : Exp {N}} {v : Val e} {v' : Val e'} {T S : Ty} {Γ : Env} → Γ ⊢ [ n ↦ e ] s ∶ T → Γ ⊢ e ∶ S → Γ ⊢ e' ∶ S → Γ ⊢ [ n ↦ e' ] s ∶ T
-  swap-expr-subst {N} {n} {e} {e'} {Var x} {v} {v'}  {T} {S} {Γ} j j' j''
-    with x ≟ᴺ n
-  ...  | no ¬p = j
-  ...  | yes p = {!!}
-  swap-expr-subst {N} {n} {e} {e'} {Abs s}  {v} {v'} {(Fun T₁ T₂)} {S} {Γ} (TAbs j) j' j'' = TAbs (swap-expr-subst{N}{ℕ.suc n}{s = s} j (ext{N}{Γ}{T₁ ∷ []} j') (ext{N}{Γ}{T₁ ∷ []} j''))
-  swap-expr-subst {N} {n} {e} {e'} {App s s₁} {v} {v'} {T} {S} {Γ} (TApp j j₁) j' j'' = TApp (swap-expr-subst{s = s} j j' j'') (swap-expr-subst{s = s₁} j₁ j' j'')
-  swap-expr-subst {N} {n} {e} {e'} {LabI x} {v} {v'} {(Label s)} {S} {Γ} (TLabI ins) j' j'' = TLabI ins
-  swap-expr-subst {N} {n} {e} {e'} {LabE f (Var x)} {v} {v'} {T} {S} {Γ} j j' j''
-    with x ≟ᴺ n
-  swap-expr-subst {N} {n} {.(LabI _)} {e'} {LabE f (Var x)} {v} {v'} {T} {S} {Γ} (TLabEl f' j) j' j'' | yes p = {!!}
-  swap-expr-subst {N} {n} {.(Var _)} {e'} {LabE f (Var x)} {v} {v'} {T} {S} {Γ} (TLabEx f' j) j' j'' | yes p rewrite sym (type-uniq j j') = {!!}
-  swap-expr-subst {N} {n} {e} {e'} {LabE f (Var x)} {v} {v'} {T} {S} {Γ} (TLabEx f' j) j' j'' | no ¬p = TLabEx (λ l i → {!f' l i!}) j
-  swap-expr-subst {N} {n} {e} {e'} {LabE f (LabI x)} {v} {v'}  {T} {S} {Γ} (TLabEl{ins = ins} f' j) j' j'' = TLabEl{ins = ins} (λ l i → swap-expr-subst{s = f l i} (f' l i) j' j'') (TLabI ins)
--}
-
-  -- corollary for labels
-{-
-  swap-expr-subst-lab : {N n : ℕ} {s : Subset N} {l x : Fin N} {ins : l ∈ s} {ins' : x ∈ s} {e : Exp {N}} {T : Ty} {Γ : Env} 
-                                                                                                                             → Γ ⊢ [ n ↦ LabI l ] e ∶ T →  Γ ⊢ [ n ↦ LabI x ] e ∶ T
-  swap-expr-subst-lab {N} {n} {s} {l} {x} {ins} {ins'} {e} {T} {Γ} j = swap-expr-subst{N}{n}{e = LabI l}{e' = LabI x}{s = e}{S = Label s} j (TLabI ins) (TLabI ins')
-
-  
-
-  swap-expr-subst-lab' : {N n : ℕ} {s : Subset N} {l x : Fin N} {ins : l ∈ s} {ins' : x ∈ s} {e : Exp {N}} {T : Ty} {Γ : Env} → [] ⊢ LabI l ∶ Label s → [] ⊢ LabI x ∶ Label s
-                                                                                                                              → Γ ⊢ [ n ↦ LabI l ] e ∶ T →  Γ ⊢ [ n ↦ LabI x ] e ∶ T
-  swap-expr-subst-lab' {N} {n} {s} {l} {x} {ins} {ins'} {Var z} {T} {Γ} j j' j''
-    with z ≟ᴺ n
-  swap-expr-subst-lab' {N} {n} {s} {l} {x} {ins} {ins'} {Var z} {Label x₁} {Γ} j j' j'' | yes p = {!!}  -- NOPE; T can be a different subset containing l, but not x
--}
