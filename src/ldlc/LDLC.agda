@@ -1,8 +1,8 @@
--- simply-typed labelled λ-calculus w/ DeBruijn indices
+-- simply-typed label-dependent λ-calculus w/ DeBruijn indices
 
 -- {-# OPTIONS --show-implicit #-}
 
-module LLC where
+module LDLC where
 
 open import Agda.Primitive
 open import Agda.Builtin.Bool
@@ -12,7 +12,7 @@ open import Data.Nat renaming (_+_ to _+ᴺ_ ; _≤_ to _≤ᴺ_ ; _≥_ to _≥
 open import Data.Nat.Properties renaming (_<?_ to _<ᴺ?_)
 open import Data.Integer renaming (_+_ to _+ᶻ_ ; _≤_ to _≤ᶻ_ ; _≥_ to _≥ᶻ_ ; _<_ to _<ᶻ_ ; _>_ to _>ᶻ_)
 open import Data.Integer.Properties using (⊖-≥ ; 0≤n⇒+∣n∣≡n ; +-monoˡ-≤)
-open import Data.List
+open import Data.List hiding (length)
 open import Data.List.Relation.Unary.All
 open import Relation.Unary using (Decidable)
 open import Data.Vec.Relation.Unary.Any
@@ -39,10 +39,14 @@ module defs where
     App : Exp {n} → Exp {n} → Exp {n}
     LabI : Fin n → Exp {n}
     LabE : {s : Subset n} → (f : ∀ l → l ∈ s → Exp {n}) → Exp {n} → Exp {n}
-  
+    Prod : Exp {n} → Exp {n} → Exp {n}
+    FakeLet : Exp {n} → Exp {n} → Exp {n}
+
   data Ty {n : ℕ} : Set where
-    Fun : Ty {n} → Ty {n} → Ty
     Label : Subset n → Ty
+    Pi : Ty {n} → Ty {n} → Ty
+    Sigma : Ty {n} → Ty {n} → Ty
+    Case : {s : Subset n} → (f : ∀ l → l ∈ s → Ty {n}) → Exp {n} → Ty 
   
   -- shifting and substitution
 
@@ -60,6 +64,8 @@ module defs where
   ↑ d , c [ App t t₁ ] = App (↑ d , c [ t ]) (↑ d , c [ t₁ ])
   ↑ d , c [ LabI x ] = LabI x
   ↑ d , c [ LabE f e ] = LabE (λ l x → ↑ d , c [ (f l x) ]) (↑ d , c [ e ])
+  ↑ d , c [ Prod e e' ] = Prod (↑ d , c [ e ]) (↑ d , (ℕ.suc c) [ e' ])
+  ↑ d , c [ FakeLet e e' ] = FakeLet (↑ d , c [ e ]) (↑ d , (ℕ.suc c) [ e' ])
 
   -- shorthands
   ↑¹[_] : ∀ {n} → Exp {n} → Exp
@@ -79,6 +85,15 @@ module defs where
   [ k ↦ s ] App t t₁ = App ([ k ↦ s ] t) ([ k ↦ s ] t₁)
   [ k ↦ s ] LabI ins = LabI ins
   [ k ↦ s ] LabE f e = LabE (λ l x → [ k ↦ s ] (f l x)) ([ k ↦ s ] e)
+  [ k ↦ s ] Prod e e' = Prod ([ k ↦ s ] e) ([ ℕ.suc k ↦ ↑¹[ s ] ] e')
+  [ k ↦ s ] FakeLet e e' = FakeLet ([ k ↦ s ] e) ([ ℕ.suc k ↦ ↑¹[ s ] ] e')
+
+  -- type substitution
+  [_↦_]ᵀ_ : ∀ {n} → ℕ → Exp {n} → Ty {n} → Ty {n}
+  [ k ↦ s ]ᵀ Label x = Label x
+  [ k ↦ s ]ᵀ Pi t t₁ = Pi ([ k ↦ s ]ᵀ t) ([ k ↦ s ]ᵀ t₁)
+  [ k ↦ s ]ᵀ Sigma t t₁ = Sigma ([ k ↦ s ]ᵀ t) ([ k ↦ s ]ᵀ t₁)
+  [ k ↦ s ]ᵀ Case f e = Case (λ l x → [ k ↦ s ]ᵀ (f l x)) ([ k ↦ s ] e)
 
   -- variable in expression
   data _∈`_ {N : ℕ} : ℕ → Exp {N} → Set where
@@ -86,29 +101,53 @@ module defs where
     in-Abs : {n : ℕ} {e : Exp} → (ℕ.suc n) ∈` e → n ∈` Abs e
     in-App : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ n ∈` e' → n ∈` App e e'
     in-LabE : {n : ℕ} {s : Subset N} {f : (∀ l → l ∈ s → Exp {N})} {e : Exp {N}} → (∃₂ λ l i → n ∈` (f l i)) ⊎ n ∈` e → n ∈` LabE {N} {s} f e
+    
+  -- Type environment, formation and typing of expressions
+  data TEnv {n : ℕ} : Set
+  data _∶_∈_ {n : ℕ} : ℕ → Ty {n} → TEnv {n} → Set
+  data _⊢_ {n : ℕ} : TEnv {n} → Ty {n} → Set
+  data _⊢_∶_ {n : ℕ} : TEnv {n} → Exp {n} → Ty {n} → Set
 
-  -- typing
+  data TEnv {n} where
+    [] : TEnv
+    ⟨_,_⟩ : (T : Ty) (Γ : TEnv {n}) {ok : Γ ⊢ T} → TEnv
 
-  Env : {ℕ} → Set
-  Env {n} = List (Ty {n})
+  length : {n : ℕ} → TEnv {n} → ℕ
+  length [] = 0
+  length ⟨ T , Γ ⟩ = ℕ.suc (length Γ)
 
-  data _∶_∈_ {n : ℕ} : ℕ → Ty {n} → Env {n} → Set where
-    here : {T : Ty} {Γ : Env} → 0 ∶ T ∈ (T ∷ Γ)
-    there : {n : ℕ} {T₁ T₂ : Ty} {Γ : Env} → n ∶ T₁ ∈ Γ → (ℕ.suc n) ∶ T₁ ∈ (T₂ ∷ Γ)
+  data _∶_∈_ {n} where
+    here : {T : Ty} {Γ : TEnv} {ok : Γ ⊢ T} → 0 ∶ T ∈ ⟨ T , Γ ⟩ {ok}
+    there : {n : ℕ} {T₁ T₂ : Ty} {Γ : TEnv} {ok : Γ ⊢ T₂} → n ∶ T₁ ∈ Γ → (ℕ.suc n) ∶ T₁ ∈ ⟨ T₂ , Γ ⟩ {ok}
 
-  data _⊢_∶_ {n : ℕ} : Env {n} → Exp {n} → Ty {n} → Set where
-    TVar : {m : ℕ} {Γ : Env} {T : Ty} → m ∶ T ∈ Γ → Γ ⊢ (Var m) ∶ T
-    TAbs : {Γ : Env} {T₁ T₂ : Ty} {e : Exp} → (T₁ ∷ Γ) ⊢ e ∶ T₂ → Γ ⊢ (Abs e) ∶ (Fun T₁ T₂)
-    TApp : {Γ : Env} {T₁ T₂ : Ty} {e₁ e₂ : Exp} → Γ ⊢ e₁ ∶ (Fun T₁ T₂) → Γ ⊢ e₂ ∶ T₁ → Γ ⊢ (App e₁ e₂) ∶ T₂
-    TLabI : {Γ : Env} {x : Fin n} {s : Subset n} → (ins : x ∈ s) → Γ ⊢ LabI x ∶ Label {n} s
-    TLabEl : {Γ : Env} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} {scopecheck : ∀ l i n → n ∈` (f l i) → n <ᴺ length Γ}
-                                                                                                 → Γ ⊢ f x ins ∶ T
-                                                                                                 → Γ ⊢ LabI {n} x ∶ Label {n} s
-                                                                                                 → Γ ⊢ LabE {n} {s} f (LabI {n} x) ∶ T
-    TLabEx : {Γ : Env} {T : Ty} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ T))
-                                                                               → Γ ⊢ Var m ∶ Label {n} s
-                                                                               → Γ ⊢ LabE {n} {s} f (Var m) ∶ T
+  -- Type formation
+  data _⊢_ {n} where
+    TLabF : {Γ : TEnv {n}} {s : Subset n} → Γ ⊢ Label s
+    TPiF : {Γ : TEnv {n}} {A B : Ty} {x : ℕ} → (ok : Γ ⊢ A) → ⟨ A , Γ ⟩ {ok} ⊢ B → Γ ⊢ Pi A B
+    TSigmaF : {Γ : TEnv {n}} {A B : Ty} {x : ℕ} → (ok : Γ ⊢ A) → ⟨ A , Γ ⟩ {ok} ⊢ B → Γ ⊢ Sigma A B
+    TCaseF : {Γ : TEnv {n}} {s : Subset n} {e : Exp {n}} {f : ∀ l → l ∈ s → Ty} → (f' : ∀ l i → Γ ⊢ (f l i))
+                                                                               → Γ ⊢ e ∶ Label s
+                                                                               → Γ ⊢ Case {n} {s} f e
 
+  -- Typing expressions
+  data _⊢_∶_ {n} where
+    TVarE : {m : ℕ} {Γ : TEnv} {T : Ty} → m ∶ T ∈ Γ → Γ ⊢ (Var m) ∶ T
+    TPiI : {Γ : TEnv} {A B : Ty} {e : Exp} {ok : Γ ⊢ A} → ⟨ A , Γ ⟩ {ok} ⊢ e ∶ B → Γ ⊢ (Abs e) ∶ (Pi A B)
+    TPiE : {Γ : TEnv} {A B : Ty} {e e' : Exp} → Γ ⊢ e ∶ (Pi A B) → Γ ⊢ e' ∶ A → Γ ⊢ ([ 0 ↦ e' ]ᵀ B) → Γ ⊢ App e e' ∶ ([ 0 ↦ e' ]ᵀ B)
+    TSigmaI : {Γ : TEnv} {A B : Ty} {e e' : Exp} {ok : Γ ⊢ A} → Γ ⊢ e ∶ A → ⟨ A , Γ ⟩ {ok} ⊢ e' ∶ B → Γ ⊢ Prod e e' ∶ (Sigma A B)
+    TSigmaE : {Γ : TEnv {n}} {A B C : Ty} {e e' : Exp} {ok : Γ ⊢ A} {ok' : ⟨ A , Γ ⟩ {ok} ⊢ B} → Γ ⊢ e ∶ (Sigma A B)
+                                                                                               → ⟨ B , ⟨ A , Γ ⟩ {ok} ⟩ {ok'} ⊢ e' ∶ C
+                                                                                               →  Γ ⊢ FakeLet e e' ∶ C
+    TLabI : {Γ : TEnv} {x : Fin n} {s : Subset n} → (ins : x ∈ s) → Γ ⊢ LabI x ∶ Label {n} s
+    TLabEl : {Γ : TEnv {n}} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} {scopecheck : ∀ l i m → m ∈` (f l i) → m <ᴺ length Γ}
+                                                                                                    → Γ ⊢ f x ins ∶ T
+                                                                                                    → Γ ⊢ LabI {n} x ∶ Label {n} s
+                                                                                                    → Γ ⊢ LabE {n} {s} f (LabI {n} x) ∶ T
+    TLabEx : {Γ : TEnv} {T : Ty} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ T))
+                                                                                → Γ ⊢ Var m ∶ Label {n} s
+                                                                                → Γ ⊢ LabE {n} {s} f (Var m) ∶ T
+                                                                               
+{-
 -- denotational semantics
 module denotational where
   open defs
@@ -921,3 +960,4 @@ module operational where
           = preserve-subst'{Δ = []}{v = x} j j₁
   preserve' {n} {T} (LabE f (LabI l)) .(f x ins) (TLabEl{ins = ins'} j j') (β-LabE {x = x} ins) rewrite (∈-eq ins ins') = j
 
+-}
