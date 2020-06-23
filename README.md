@@ -2,8 +2,8 @@
 label dependent lambda calculus
 
 contains:
-* simply typed lambda calculus
-* intrinsically typed lambda calculus
-* (soon: simply typed labeled lambda calculus)
-* intrinsically typed labeled lambda calculus with subtyping
-* (soon: simply typed label-dependent lambda calculus)
+* Curry-style simply typed lambda calculus
+* Church-style simply typed lambda calculus
+* Curry-style labeled lambda calculus
+* Church-style labeled lambda calculus with subtyping
+* (TODO: Curry-styled label-dependent lambda calculus)
