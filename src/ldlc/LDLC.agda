@@ -42,11 +42,17 @@ module defs where
     Prod : Exp {n} → Exp {n} → Exp {n}
     FakeLet : Exp {n} → Exp {n} → Exp {n}
 
+  data Val {n : ℕ} : Exp {n} → Set where
+    VVar : {n : ℕ} → Val (Var n)
+    VLab : {x : Fin n} → Val (LabI x)
+    VFun : {e : Exp} → Val (Abs e)
+    VProd : {e e' : Exp} → Val (Prod e e')
+
   data Ty {n : ℕ} : Set where
     Label : Subset n → Ty
     Pi : Ty {n} → Ty {n} → Ty
     Sigma : Ty {n} → Ty {n} → Ty
-    Case : {s : Subset n} → (f : ∀ l → l ∈ s → Ty {n}) → Exp {n} → Ty 
+    Case : {s : Subset n} → (f : ∀ l → l ∈ s → Ty {n}) → Exp{n} → Ty 
   
   -- shifting and substitution
 
@@ -107,6 +113,7 @@ module defs where
   data _∶_∈_ {n : ℕ} : ℕ → Ty {n} → TEnv {n} → Set
   data _⊢_ {n : ℕ} : TEnv {n} → Ty {n} → Set
   data _⊢_∶_ {n : ℕ} : TEnv {n} → Exp {n} → Ty {n} → Set
+  data _⊢_≡ᵀ_ {n : ℕ} : TEnv {n} → Ty {n} → Ty {n} → Set
 
   data TEnv {n} where
     [] : TEnv
@@ -126,8 +133,9 @@ module defs where
     TPiF : {Γ : TEnv {n}} {A B : Ty} {x : ℕ} → (ok : Γ ⊢ A) → ⟨ A , Γ ⟩ {ok} ⊢ B → Γ ⊢ Pi A B
     TSigmaF : {Γ : TEnv {n}} {A B : Ty} {x : ℕ} → (ok : Γ ⊢ A) → ⟨ A , Γ ⟩ {ok} ⊢ B → Γ ⊢ Sigma A B
     TCaseF : {Γ : TEnv {n}} {s : Subset n} {e : Exp {n}} {f : ∀ l → l ∈ s → Ty} → (f' : ∀ l i → Γ ⊢ (f l i))
-                                                                               → Γ ⊢ e ∶ Label s
-                                                                               → Γ ⊢ Case {n} {s} f e
+                                                                                → (v : Val e)
+                                                                                → Γ ⊢ e ∶ Label s
+                                                                                → Γ ⊢ Case {n} {s} f e
 
   -- Typing expressions
   data _⊢_∶_ {n} where
@@ -146,7 +154,18 @@ module defs where
     TLabEx : {Γ : TEnv} {T : Ty} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ T))
                                                                                 → Γ ⊢ Var m ∶ Label {n} s
                                                                                 → Γ ⊢ LabE {n} {s} f (Var m) ∶ T
-                                                                               
+
+  -- Type conversion
+  data _⊢_≡ᵀ_ {n} where
+    CRefl : {Γ : TEnv {n}} {T : Ty} → Γ ⊢ T ≡ᵀ T
+    CSym : {Γ : TEnv {n}} {T T' : Ty} → Γ ⊢ T ≡ᵀ T' → Γ ⊢ T' ≡ᵀ T
+    CTrans : {Γ : TEnv {n}} {T T' T'' : Ty} → Γ ⊢ T ≡ᵀ T' → Γ ⊢ T' ≡ᵀ T'' → Γ ⊢ T ≡ᵀ T''
+    CLabEta : {Γ : TEnv {n}} {s : Subset n} {x : Fin n} {T : Ty} → Γ ⊢ LabI x ∶ Label s → Γ ⊢ T → Γ ⊢ T ≡ᵀ (Case {s = s} (λ l i → T) (LabI x))
+    CLabBeta : {Γ : TEnv {n}} {s : Subset n} {x : Fin n} {f : (∀ l → l ∈ s → Ty)} → Γ ⊢ Case f (LabI x) → (ins : x ∈ s) → Γ ⊢ Case f (LabI x) ≡ᵀ (f x ins)
+    CPi : {Γ : TEnv {n}} {A B A' B' : Ty} {ok : Γ ⊢ A} → Γ ⊢ A ≡ᵀ B → ⟨ A , Γ ⟩ {ok} ⊢ A' ≡ᵀ B' → Γ ⊢ Pi A A' ≡ᵀ Pi B B'
+    CSigma : {Γ : TEnv {n}} {A B A' B' : Ty} {ok : Γ ⊢ A} → Γ ⊢ A ≡ᵀ B → ⟨ A , Γ ⟩ {ok} ⊢ A' ≡ᵀ B' → Γ ⊢ Sigma A A' ≡ᵀ Sigma B B'
+    CLab : {Γ : TEnv {n}} {s : Subset n} {f f' : (∀ l → l ∈ s → Ty)} {e : Exp {n}} → (v : Val e) → (∀ l i → Γ ⊢ (f l i) ≡ᵀ (f' l i)) → Γ ⊢ Case f e ≡ᵀ Case f' e
+
 {-
 -- denotational semantics
 module denotational where
@@ -169,15 +188,13 @@ module denotational where
   eval (TLabEx {m = m}{s}{f} f' j) Val-Γ
     with eval j Val-Γ    -- evaluate variable
   ... | x , ins = eval (f' x ins) Val-Γ
-
-
+-}
+{-
 -- operational semantics (call-by-value)
 module operational where
   open defs
 
-  data Val {n : ℕ} : Exp {n} → Set where
-    VFun : {e : Exp} → Val (Abs e)
-    VLab : {x : Fin n} → Val (LabI x)
+
 
   -- reduction relation
   data _⇒_ {n : ℕ} : Exp {n} → Exp {n} → Set where
@@ -185,6 +202,7 @@ module operational where
     ξ-App2 : {e e' v : Exp} → Val v → e ⇒ e' → App v e ⇒ App v e'
     β-App : {e v : Exp} → Val v → (App (Abs e) v) ⇒ (↑⁻¹[ ([ 0 ↦ ↑¹[ v ] ] e) ])
     β-LabE : {s : Subset n} {f : ∀ l → l ∈ s → Exp} {x : Fin n} → (ins : x ∈ s) → LabE f (LabI x) ⇒ f x ins
+
 
   ---- properties & lemmas
   
