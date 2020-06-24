@@ -25,6 +25,10 @@ n+1≡sucn : {n : ℕ} → n +ᴺ 1 ≡ ℕ.suc n
 n+1≡sucn {zero} = refl
 n+1≡sucn {ℕ.suc n} = cong ℕ.suc (n+1≡sucn{n})
 
+n+2≡sucsucn : {n : ℕ} → n +ᴺ 2 ≡ ℕ.suc (ℕ.suc n)
+n+2≡sucsucn {zero} = refl
+n+2≡sucsucn {ℕ.suc n} = cong ℕ.suc (n+2≡sucsucn{n})
+
 n≤sucn : {n : ℕ} → n ≤ᴺ ℕ.suc n
 n≤sucn {zero} = z≤n
 n≤sucn {ℕ.suc n} = s≤s n≤sucn
@@ -88,6 +92,8 @@ m>n⇒m∸n≥1 {ℕ.suc m} {ℕ.suc n} (s≤s le) = m>n⇒m∸n≥1 le
 m∸n≥q⇒m≥q : {m n q : ℕ} → m ∸ n ≥ᴺ q → m ≥ᴺ q
 m∸n≥q⇒m≥q {m} {n} {q} ge = ≤-trans ge (m∸n≤m m n)
 
+¬n<0 : ∀ (n : ℕ) → ¬ (n <ᴺ 0)
+¬n<0 n ()
 
 -- lists & length
 

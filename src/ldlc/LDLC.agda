@@ -71,7 +71,7 @@ module defs where
   ↑ d , c [ LabI x ] = LabI x
   ↑ d , c [ LabE f e ] = LabE (λ l x → ↑ d , c [ (f l x) ]) (↑ d , c [ e ])
   ↑ d , c [ Prod e e' ] = Prod (↑ d , c [ e ]) (↑ d , (ℕ.suc c) [ e' ])
-  ↑ d , c [ FakeLet e e' ] = FakeLet (↑ d , c [ e ]) (↑ d , (ℕ.suc c) [ e' ])
+  ↑ d , c [ FakeLet e e' ] = FakeLet (↑ d , c [ e ]) (↑ d , (ℕ.suc (ℕ.suc c)) [ e' ])
 
   -- shorthands
   ↑¹[_] : ∀ {n} → Exp {n} → Exp
@@ -92,7 +92,7 @@ module defs where
   [ k ↦ s ] LabI ins = LabI ins
   [ k ↦ s ] LabE f e = LabE (λ l x → [ k ↦ s ] (f l x)) ([ k ↦ s ] e)
   [ k ↦ s ] Prod e e' = Prod ([ k ↦ s ] e) ([ ℕ.suc k ↦ ↑¹[ s ] ] e')
-  [ k ↦ s ] FakeLet e e' = FakeLet ([ k ↦ s ] e) ([ ℕ.suc k ↦ ↑¹[ s ] ] e')
+  [ k ↦ s ] FakeLet e e' = FakeLet ([ k ↦ s ] e) ([ (ℕ.suc (ℕ.suc k)) ↦ ↑ (ℤ.pos 2) , 0 [ s ] ] e')
 
   -- type substitution
   [_↦_]ᵀ_ : ∀ {n} → ℕ → Exp {n} → Ty {n} → Ty {n}
@@ -107,6 +107,8 @@ module defs where
     in-Abs : {n : ℕ} {e : Exp} → (ℕ.suc n) ∈` e → n ∈` Abs e
     in-App : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ n ∈` e' → n ∈` App e e'
     in-LabE : {n : ℕ} {s : Subset N} {f : (∀ l → l ∈ s → Exp {N})} {e : Exp {N}} → (∃₂ λ l i → n ∈` (f l i)) ⊎ n ∈` e → n ∈` LabE {N} {s} f e
+    in-Prod : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc n) ∈` e' → n ∈` Prod e e'
+    in-FakeLet : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc (ℕ.suc n)) ∈` e' → n ∈` FakeLet e e'
     
   -- Type environment, formation and typing of expressions
   data TEnv {n : ℕ} : Set
@@ -139,6 +141,7 @@ module defs where
 
   -- Typing expressions
   data _⊢_∶_ {n} where
+    TConv : {Γ : TEnv} {T T' : Ty {n}} {e : Exp} → Γ ⊢ e ∶ T → Γ ⊢ T ≡ᵀ T' → Γ ⊢ e ∶ T'
     TVarE : {m : ℕ} {Γ : TEnv} {T : Ty} → m ∶ T ∈ Γ → Γ ⊢ (Var m) ∶ T
     TPiI : {Γ : TEnv} {A B : Ty} {e : Exp} {ok : Γ ⊢ A} → ⟨ A , Γ ⟩ {ok} ⊢ e ∶ B → Γ ⊢ (Abs e) ∶ (Pi A B)
     TPiE : {Γ : TEnv} {A B : Ty} {e e' : Exp} → Γ ⊢ e ∶ (Pi A B) → Γ ⊢ e' ∶ A → Γ ⊢ ([ 0 ↦ e' ]ᵀ B) → Γ ⊢ App e e' ∶ ([ 0 ↦ e' ]ᵀ B)
@@ -189,11 +192,10 @@ module denotational where
     with eval j Val-Γ    -- evaluate variable
   ... | x , ins = eval (f' x ins) Val-Γ
 -}
-{-
+
 -- operational semantics (call-by-value)
 module operational where
   open defs
-
 
 
   -- reduction relation
@@ -201,8 +203,8 @@ module operational where
     ξ-App1 : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → App e₁ e₂ ⇒ App e₁' e₂
     ξ-App2 : {e e' v : Exp} → Val v → e ⇒ e' → App v e ⇒ App v e'
     β-App : {e v : Exp} → Val v → (App (Abs e) v) ⇒ (↑⁻¹[ ([ 0 ↦ ↑¹[ v ] ] e) ])
+    β-FakeLet : {e e' e'' : Exp} → FakeLet (Prod e e') e'' ⇒ ↑ (ℤ.negsuc 1) , 0 [ ([ 0 ↦ e ] ([ 0 ↦ ↑ (ℤ.pos 1) , 1 [ e' ] ] e'')) ]
     β-LabE : {s : Subset n} {f : ∀ l → l ∈ s → Exp} {x : Fin n} → (ins : x ∈ s) → LabE f (LabI x) ⇒ f x ins
-
 
   ---- properties & lemmas
   
@@ -272,6 +274,8 @@ module operational where
   ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {App e e₁} = cong₂ App ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
   ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {LabI ins} = refl
   ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {LabE f e} = cong₂ LabE (f-ext (λ x → f-ext (λ ins →  ↑⁻¹ₖ[↑¹ₖ[s]]≡s)))  ↑⁻¹ₖ[↑¹ₖ[s]]≡s
+  ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {Prod e e'} = cong₂ Prod ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
+  ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {FakeLet e e'} = cong₂ FakeLet ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
 
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] : {n : ℕ} {k l : ℤ} {c : ℕ} {s : Exp {n}} → l ≥ᶻ +0 → ↑ k , c [ ↑ l , c [ s ] ] ≡ ↑ (l +ᶻ k) , c [ s ]
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {Var x} ge
@@ -291,6 +295,9 @@ module operational where
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {App s s₁} le = cong₂ App  (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s]{n}{k}{l}{c}{s} le)  (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s]{n}{k}{l}{c}{s₁} le)
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {LabI ins} le = refl
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {LabE f e} le = cong₂ LabE (f-ext (λ x → f-ext (λ ins → ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {f x ins} le))) ( ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {e} le)
+  ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {Prod e e'} le = cong₂ Prod (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le) (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le)
+  ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {FakeLet e e'} le = cong₂ FakeLet (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le) (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le)
+  
 
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] : {n : ℕ} {k l : ℤ} {q c : ℕ} {s : Exp {n}} →  + q ≤ᶻ + c +ᶻ l → c ≤ᴺ q → ↑ k , q [ ↑ l , c [ s ] ] ≡ ↑ (l +ᶻ k) , c [ s ]
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {Var x} ge₁ ge₂
@@ -311,6 +318,9 @@ module operational where
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {App s s₁} ge₁ ge₂ = cong₂ App (↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {s} ge₁ ge₂) (↑k,q[↑l,c[s]]≡↑l+k,c[s]{n} {k} {l} {q} {c} {s₁} ge₁ ge₂)
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {LabI e} ge₁ ge₂ = refl
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {LabE f e} ge₁ ge₂ = cong₂ LabE (f-ext (λ x → f-ext (λ ins → ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {f x ins} ge₁ ge₂))) (↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {e} ge₁ ge₂)
+  ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {Prod e e'} ge₁ ge₂ = cong₂ Prod (↑k,q[↑l,c[s]]≡↑l+k,c[s] ge₁ ge₂) (↑k,q[↑l,c[s]]≡↑l+k,c[s] ((+q≤+c+l⇒+1q≤+1c+l{q}{c}{l} ge₁)) (s≤s ge₂))
+  ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {FakeLet e e'} ge₁ ge₂ = cong₂ FakeLet (↑k,q[↑l,c[s]]≡↑l+k,c[s] ge₁ ge₂)
+                                                                                     (↑k,q[↑l,c[s]]≡↑l+k,c[s] ((+q≤+c+l⇒+1q≤+1c+l{ℕ.suc q}{ℕ.suc c}{l} (+q≤+c+l⇒+1q≤+1c+l{q}{c}{l} ge₁))) (s≤s (s≤s ge₂)))
 
   aux-calc-2 : {x l : ℕ} {k : ℤ} → k >ᶻ + 0 → ∣ + (x +ᴺ l) +ᶻ k ∣ ≡ ∣ + x +ᶻ k ∣ +ᴺ l
   aux-calc-2 {x} {l} {+_ n} ge
@@ -348,12 +358,17 @@ module operational where
   ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {App s s₁} le le' = cong₂ App (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {s} le le') (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {s₁} le le')
   ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {LabI x} le le' = refl
   ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {LabE f s} le le' = cong₂ LabE (f-ext (λ x → f-ext (λ ins → ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {f x ins} le le'))) (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {s} le le')
+  ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {Prod e e'} le le' = cong₂ Prod (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] le le') (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] (s≤s le) le')
+  ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {FakeLet e e'} le le' = cong₂ FakeLet (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] le le') (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] (s≤s (s≤s le)) le')
 
-  -- corollary
+  -- corollaries
   ↑k,sucq[↑1,c[s]]≡↑1,c[↑k,q[s]] : {n : ℕ} {k : ℤ} {q c : ℕ} {s : Exp {n}} → c ≤ᴺ q → + 0 <ᶻ k →  ↑ k , ℕ.suc q [ ↑ + 1 , c [ s ] ] ≡ ↑ + 1 , c [ ↑ k , q [ s ] ]
   ↑k,sucq[↑1,c[s]]≡↑1,c[↑k,q[s]] {n} {k} {q} {c} {s} le le'
     rewrite (sym (n+1≡sucn{q}))
           = ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]]{n}{k}{q}{c}{1}{s} le le'
+
+  ↑k,sucsucq[↑2,c[s]]≡↑2,c[↑k,q[s]] : {n : ℕ} {k : ℤ} {q c : ℕ} {s : Exp {n}} → c ≤ᴺ q → + 0 <ᶻ k →  ↑ k , ℕ.suc (ℕ.suc q) [ ↑ + 2 , c [ s ] ] ≡ ↑ + 2 , c [ ↑ k , q [ s ] ]
+  ↑k,sucsucq[↑2,c[s]]≡↑2,c[↑k,q[s]] {n} {k} {q} {c} {s} le le' = {!!}
 
   ↑Lab-triv : {n : ℕ} {l : Fin n} (k : ℤ) (q : ℕ) → LabI l ≡ ↑ k , q [ LabI l ] 
   ↑Lab-triv {n} {l} k q = refl
@@ -376,6 +391,8 @@ module operational where
   ↑⁰-refl {n} {c} {App e e₁} = cong₂ App (↑⁰-refl{n}{c}{e}) (↑⁰-refl{n}{c}{e₁})
   ↑⁰-refl {n} {c} {LabI x} = refl
   ↑⁰-refl {n} {c} {LabE x e} = cong₂ LabE (f-ext (λ l → f-ext λ i → ↑⁰-refl{n}{c}{x l i})) (↑⁰-refl{n}{c}{e})
+  ↑⁰-refl {n} {c} {Prod e e'} = cong₂ Prod ↑⁰-refl ↑⁰-refl
+  ↑⁰-refl {n} {c} {FakeLet e e'} = cong₂ FakeLet ↑⁰-refl ↑⁰-refl
 
   --- properties of substitution
 
@@ -427,6 +444,11 @@ module operational where
     with dm2 (contraposition in-LabE j) | (inv-in-labe z)
   ...  | fst , snd | inj₂ y = notin-shift geq snd y
   ...  | fst , snd | inj₁ (fst₁ , fst₂ , snd₁) = notin-shift geq (¬∃⟶∀¬ (¬∃⟶∀¬ fst fst₁) fst₂) snd₁
+  notin-shift {N} {n} {k} {q} {Prod e e'} geq j (in-Prod (inj₁ x)) = notin-shift geq (λ x₁ → contradiction (in-Prod (inj₁ x₁)) j) x
+  notin-shift {N} {n} {k} {q} {Prod e e'} geq j (in-Prod (inj₂ y)) = notin-shift (s≤s geq) (λ x → contradiction (in-Prod (inj₂ x)) j) y
+  notin-shift {N} {n} {k} {q} {FakeLet e e'} geq j (in-FakeLet (inj₁ x)) = notin-shift geq (λ x₁ → contradiction (in-FakeLet (inj₁ x₁)) j) x
+  notin-shift {N} {n} {k} {q} {FakeLet e e'} geq j (in-FakeLet (inj₂ y)) = notin-shift (s≤s (s≤s geq)) (λ x → contradiction (in-FakeLet (inj₂ x)) j) y
+
 
   -- corollary
   notin-shift-one : {N n : ℕ} {e : Exp{N}} → ¬ n ∈` e → ¬ (ℕ.suc n ∈` ↑¹[ e ])
@@ -446,6 +468,8 @@ module operational where
   subst-refl-notin {N} {n} {LabE x e} {e'} nin
     with dm2 (contraposition in-LabE nin)
   ...  | fst , snd = cong₂ LabE (f-ext (λ l → f-ext (λ x₁ → subst-refl-notin{e' = e'} (¬∃⟶∀¬ (¬∃⟶∀¬ (fst) l) x₁)))) (subst-refl-notin (snd))
+  subst-refl-notin {N} {n} {Prod e e'} {e''} nin = cong₂ Prod (subst-refl-notin (λ x → contradiction (in-Prod (inj₁ x)) nin)) (subst-refl-notin (λ x → contradiction (in-Prod (inj₂ x)) nin))
+  subst-refl-notin {N} {n} {FakeLet e e'} {e''} nin = cong₂ FakeLet (subst-refl-notin (λ x → contradiction (in-FakeLet (inj₁ x)) nin)) (subst-refl-notin (λ x → contradiction (in-FakeLet (inj₂ x)) nin))
 
   notin-subst : {N n : ℕ} {e e' : Exp {N}} → ¬ n ∈` e' → ¬ (n ∈` ([ n ↦ e' ] e))
   notin-subst {N} {n} {Var x} {e'} nin
@@ -464,6 +488,15 @@ module operational where
     with z
   ...  | inj₁ (fst , fst₁ , snd) = notin-subst{e = f fst fst₁} nin snd
   ...  | inj₂ y = notin-subst{e = e} nin y
+  --   notin-shift : {N n k q : ℕ} {e : Exp {N}} → n ≥ᴺ q → ¬ n ∈` e → ¬ ((n +ᴺ k) ∈` ↑ + k , q [ e ])
+  notin-subst {N} {n} {Prod e e'} {e''} nin (in-Prod (inj₁ x)) = notin-subst{e = e} nin x
+  notin-subst {N} {n} {Prod e e'} {e''} nin (in-Prod (inj₂ y))
+    with notin-shift{k = 1} z≤n nin
+  ...  | w rewrite (n+1≡sucn{n}) =  notin-subst {n = ℕ.suc n}{e = e'}{e' = ↑¹[ e'' ]} w y 
+  notin-subst {N} {n} {FakeLet e e'} {e''} nin (in-FakeLet (inj₁ x)) = notin-subst{e = e} nin x
+  notin-subst {N} {n} {FakeLet e e'} {e''} nin (in-FakeLet (inj₂ y))
+    with notin-shift{k = 2} z≤n nin
+  ...  | w rewrite (n+2≡sucsucn{n}) = notin-subst {n = ℕ.suc (ℕ.suc n)} {e = e'} {e' = ↑ + 2 , 0 [ e'' ]} w y
 
   subst2-refl-notin : {N n : ℕ} {e e' s : Exp {N}} → ¬ n ∈` e' → [ n ↦ e ] ([ n ↦ e' ] s) ≡ [ n ↦ e' ] s
   subst2-refl-notin {N} {n} {e} {e'} {s} nin = subst-refl-notin (notin-subst{e = s} nin)
@@ -479,6 +512,12 @@ module operational where
   subst-in-neq {N} {n} {m} {App e e₁} {s} nin (in-App (inj₂ y)) = subst-in-neq{e = e₁} nin y
   subst-in-neq {N} {n} {m} {LabE f e} {s} nin (in-LabE (inj₁ (fst , fst₁ , snd))) = subst-in-neq{e = f fst fst₁} nin snd
   subst-in-neq {N} {n} {m} {LabE f e} {s} nin (in-LabE (inj₂ y)) = subst-in-neq{e = e} nin y
+  subst-in-neq {N} {n} {m} {Prod e e'} {s} nin (in-Prod (inj₁ x)) = subst-in-neq{e = e} nin x
+  subst-in-neq {N} {n} {m} {Prod e e'} {s} nin (in-Prod (inj₂ y)) = sucn≢sucm⇒n≢m (subst-in-neq{e = e'} (notin-shift-one nin) y) 
+  subst-in-neq {N} {n} {m} {FakeLet e e'} {s} nin (in-FakeLet (inj₁ x)) = subst-in-neq{e = e} nin x
+  subst-in-neq {N} {n} {m} {FakeLet e e'} {s} nin (in-FakeLet (inj₂ y))
+    with notin-shift{k = 2} z≤n nin
+  ...  | w rewrite (n+2≡sucsucn{n}) = sucn≢sucm⇒n≢m (sucn≢sucm⇒n≢m (subst-in-neq{e = e'} w y))
 
   -- if n ≢ m, n ∈` e, then n ∈` [ m ↦ e' ] e
   subst-in : {N n m : ℕ} {e e' : Exp {N}} → n ≢ m → n ∈` e → n ∈` ([ m ↦ e' ] e)
@@ -495,6 +534,10 @@ module operational where
     with z
   ...  | inj₁ (fst , fst₁ , snd) = in-LabE (inj₁ (fst , (fst₁ , (subst-in neq snd))))
   ...  | inj₂ y = in-LabE (inj₂ (subst-in neq y))
+  subst-in {N} {n} {m} {Prod e e'} {e''} neq (in-Prod (inj₁ x)) = in-Prod (inj₁ (subst-in neq x))
+  subst-in {N} {n} {m} {Prod e e'} {e''} neq (in-Prod (inj₂ y)) = in-Prod (inj₂ (subst-in (n≢m⇒sucn≢sucm neq) y))
+  subst-in {N} {n} {m} {FakeLet e e'} {e''} neq (in-FakeLet (inj₁ x)) = in-FakeLet (inj₁ (subst-in neq x))
+  subst-in {N} {n} {m} {FakeLet e e'} {e''} neq (in-FakeLet (inj₂ y)) = in-FakeLet (inj₂ (subst-in (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) y))
 
   -- if n ≢ m, n ∉ e', n ∈ [ m ↦ e' ] e, then n ∈ e
   subst-in-reverse : {N n m : ℕ} {e e' : Exp {N}} → n ≢ m → ¬ (n ∈` e') → n ∈` ([ m ↦ e' ] e) → n ∈` e
@@ -507,39 +550,53 @@ module operational where
   subst-in-reverse {N} {n} {m} {App e e₁} {e'} neq nin (in-App (inj₂ y)) = in-App (inj₂ (subst-in-reverse neq nin y))
   subst-in-reverse {N} {n} {m} {LabE f e} {e'} neq nin (in-LabE (inj₁ (fst , fst₁ , snd))) = in-LabE (inj₁ (fst , (fst₁ , subst-in-reverse{e = f fst fst₁} neq nin snd)))
   subst-in-reverse {N} {n} {m} {LabE f e} {e'} neq nin (in-LabE (inj₂ y)) = in-LabE (inj₂ (subst-in-reverse neq nin y))
+  subst-in-reverse {N} {n} {m} {Prod e e'} {e''} neq nin (in-Prod (inj₁ x)) = in-Prod (inj₁ (subst-in-reverse neq nin x))
+  subst-in-reverse {N} {n} {m} {Prod e e'} {e''} neq nin (in-Prod (inj₂ y)) = in-Prod (inj₂ (subst-in-reverse (n≢m⇒sucn≢sucm neq) (notin-shift-one{e = e''} nin) y))
+  subst-in-reverse {N} {n} {m} {FakeLet e e'} {e''} neq nin (in-FakeLet (inj₁ x)) = in-FakeLet (inj₁ (subst-in-reverse neq nin x))
+  subst-in-reverse {N} {n} {m} {FakeLet e e'} {e''} neq nin (in-FakeLet (inj₂ y))
+    with notin-shift{k = 2} z≤n nin
+  ...  | w rewrite (n+2≡sucsucn{n}) = in-FakeLet (inj₂ (subst-in-reverse (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) w y))
 
-  var-env-< : {N : ℕ} {Γ : Env {N}} {T : Ty} {n : ℕ} (j : n ∶ T ∈ Γ) → n <ᴺ (length Γ)
-  var-env-< {N} {.(T ∷ _)} {T} {.0} here = s≤s z≤n
-  var-env-< {N} {.(_ ∷ _)} {T} {.(ℕ.suc _)} (there j) = s≤s (var-env-< j)
+  var-env-< : {N : ℕ} {Γ : TEnv {N}} {T : Ty} {n : ℕ} (j : n ∶ T ∈ Γ) → n <ᴺ (length Γ)
+  var-env-< {N} {.(⟨ T , _ ⟩)} {T} {.0} here = s≤s z≤n
+  var-env-< {N} {.(⟨ _ , _ ⟩)} {T} {.(ℕ.suc _)} (there j) = s≤s (var-env-< j)
 
   -- variables contained in a term are < length of env.
-  free-vars-env-< : {N : ℕ} {e : Exp {N}} {Γ : Env} {T : Ty {N}} → Γ ⊢ e ∶ T → (∀ n → n ∈` e → n <ᴺ length Γ)
-  free-vars-env-< {N} {.(Var n)} {Γ} {T} (TVar x) n in-Var = var-env-< x
-  free-vars-env-< {N} {.(Abs _)} {Γ} {(Fun T₁ T₂)} (TAbs j) n (in-Abs ins)
-    rewrite (length[A∷B]≡suc[length[B]] {lzero} {Ty} {T₁} {Γ})
-          = ≤-pred (free-vars-env-< j (ℕ.suc n) ins)
-  free-vars-env-< {N} {App e e'} {Γ} {T} (TApp j j') n (in-App z)
-    with z
-  ...  | inj₁ x = free-vars-env-< j n x
-  ...  | inj₂ y = free-vars-env-< j' n y
---   free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl{scopecheck = s} j j')
-  free-vars-env-< {N} {LabE f (LabI l)} {Γ} {T} (TLabEl{scopecheck = s} j j') n (in-LabE z)
-    with z
-  ...  | inj₁ (fst , fst₁ , snd) = s fst fst₁ n snd
-  ...  | inj₂ ()
-  free-vars-env-< {N} {LabE f (Var m)} {Γ} {T} (TLabEx f' (TVar j)) n (in-LabE z)
+  free-vars-env-< : {N : ℕ} {e : Exp {N}} {Γ : TEnv {N}} {T : Ty {N}} → Γ ⊢ e ∶ T → (∀ n → n ∈` e → n <ᴺ length Γ)
+  free-vars-env-< {N} {Var x₁} {Γ} {T} (TConv j x) .x₁ in-Var = free-vars-env-< j x₁ in-Var
+  free-vars-env-< {N} {Var x₁} {Γ} {T} (TVarE x) .x₁ in-Var = var-env-< x
+  free-vars-env-< {N} {Abs e} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
+  free-vars-env-< {N} {Abs e} {Γ} {.(Pi _ _)} (TPiI j) n (in-Abs x) = ≤-pred (free-vars-env-< j (ℕ.suc n) x)
+  free-vars-env-< {N} {App e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
+  free-vars-env-< {N} {App e e₁} {Γ} {.([ 0 ↦ e₁ ]ᵀ _)} (TPiE j j₁ x₁) n (in-App (inj₁ x)) = free-vars-env-< j n x
+  free-vars-env-< {N} {App e e₁} {Γ} {.([ 0 ↦ e₁ ]ᵀ _)} (TPiE j j₁ x₁) n (in-App (inj₂ y)) = free-vars-env-< j₁ n y
+  free-vars-env-< {N} {LabE f e} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
+  free-vars-env-< {N} {LabE f .(LabI _)} {Γ} {T} (TLabEl{scopecheck = s} j j₁) n (in-LabE (inj₁ (fst , fst₁ , snd))) = s fst fst₁ n snd
+  free-vars-env-< {N} {LabE f (Var m)} {Γ} {T} (TLabEx f' j) n x
     with n ≟ᴺ m
-  ...  | yes p rewrite p = var-env-< j
-  ...  | no ¬p
-       with z
-  ...     | inj₁ (fst , fst₁ , snd) = free-vars-env-< (f' fst fst₁) n (subst-in ¬p snd)
-  ...     | inj₂ (in-Var) = var-env-< j
+  ...  | yes p rewrite p = free-vars-env-< j m in-Var
+  free-vars-env-< {N} {LabE f (Var m)} {Γ} {T} (TLabEx f' j) n (in-LabE (inj₁ (fst , fst₁ , snd))) | no ¬p = free-vars-env-< (f' fst fst₁) n (subst-in ¬p snd)
+  free-vars-env-< {N} {LabE f (Var m)} {Γ} {T} (TLabEx f' j) n (in-LabE (inj₂ y)) | no ¬p = contradiction (inv-in-var y) ¬p
+  free-vars-env-< {N} {Prod e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
+  free-vars-env-< {N} {Prod e e₁} {Γ} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₁ x)) = free-vars-env-< j n x
+  free-vars-env-< {N} {Prod e e₁} {Γ} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₂ y)) = ≤-pred (free-vars-env-< j₁ (ℕ.suc n) y)
+  free-vars-env-< {N} {FakeLet e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
+  free-vars-env-< {N} {FakeLet e e₁} {Γ} {T} (TSigmaE j j₁) n (in-FakeLet (inj₁ x)) = free-vars-env-< j n x
+  free-vars-env-< {N} {FakeLet e e₁} {Γ} {T} (TSigmaE j j₁) n (in-FakeLet (inj₂ y)) = ≤-pred (≤-pred (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y))
 
   -- closed expressions have no free variables
   closed-free-vars : {N : ℕ} {e : Exp {N}} {T : Ty {N}} → [] ⊢ e ∶ T → (∀ n → ¬ (n ∈` e))
-  closed-free-vars {N} {Var x} {T} (TVar ())
-  closed-free-vars {N} {LabI x} {T} j n ()
-  closed-free-vars {N} {Abs e} {.(Fun _ _)} (TAbs j) n (in-Abs x) = contradiction (free-vars-env-< j (ℕ.suc n) x) (≤⇒≯ (s≤s z≤n))
+  closed-free-vars {N} {Var x} {T} j n z = contradiction (free-vars-env-< j n z) (λ ())
+  closed-free-vars {N} {Abs e} {T} (TConv j x) n = closed-free-vars j n
+  closed-free-vars {N} {Abs e} {.(Pi _ _)} (TPiI j) n (in-Abs x) = contradiction ((free-vars-env-< j (ℕ.suc n) x)) (≤⇒≯ (s≤s z≤n))
+  closed-free-vars {N} {LabI x} {T} (TConv j x₁) n = closed-free-vars j n
+  closed-free-vars {N} {LabI x} {.(Label _)} (TLabI ins) n = λ ()
+  closed-free-vars {N} {Prod e e₁} {T} (TConv j x) n = closed-free-vars j n
+  closed-free-vars {N} {Prod e e₁} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₁ x)) = closed-free-vars j n x
+  closed-free-vars {N} {Prod e e₁} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc n) y) (≤⇒≯ (s≤s z≤n))
+  closed-free-vars {N} {FakeLet e e₁} {T} (TConv j x) n = closed-free-vars j n
+  closed-free-vars {N} {FakeLet e e₁} {T} (TSigmaE j j₁) n (in-FakeLet (inj₁ x)) = closed-free-vars j n x
+  closed-free-vars {N} {FakeLet e e₁} {T} (TSigmaE j j₁) n (in-FakeLet (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y) (≤⇒≯ (s≤s (s≤s z≤n)))
   closed-free-vars {N} {e} {T} j n x = contradiction (free-vars-env-< j n x) (≤⇒≯ z≤n)  -- App & LabE have the same proof
 
   -- shifting with a threshold above number of free variables has no effect
@@ -563,7 +620,20 @@ module operational where
           extr lmap l x n ins = lmap n (in-LabE (inj₁ (l , (x , ins))))
           extr' : (∀ n → n ∈` LabE f e → n <ᴺ q) → (∀ n → n ∈` e → n <ᴺ q)
           extr' lmap n ins = lmap n (in-LabE (inj₂ ins))
-  
+  shift-env-size {n} {k} {q} {Prod e e'} lmap = cong₂ Prod (shift-env-size (extr lmap)) (shift-env-size (extr' lmap))
+    where extr : (∀ n → n ∈` Prod e e' → n <ᴺ q) → (∀ n → n ∈` e → n <ᴺ q)
+          extr lmap n ins = lmap n (in-Prod (inj₁ ins))
+          extr' : (∀ n → n ∈` Prod e e' → n <ᴺ q) → (∀ n → n ∈` e' → n <ᴺ ℕ.suc q)
+          extr' lmap zero ins = s≤s z≤n
+          extr' lmap (ℕ.suc n) ins = s≤s (lmap n (in-Prod (inj₂ ins)))
+  shift-env-size {n} {k} {q} {FakeLet e e'} lmap = cong₂ FakeLet (shift-env-size (extr lmap)) (shift-env-size (extr' lmap))
+    where extr : (∀ n → n ∈` FakeLet e e' → n <ᴺ q) → (∀ n → n ∈` e → n <ᴺ q)
+          extr lmap n ins = lmap n (in-FakeLet (inj₁ ins))
+          extr' : (∀ n → n ∈` FakeLet e e' → n <ᴺ q) → (∀ n → n ∈` e' → n <ᴺ ℕ.suc (ℕ.suc q))
+          extr' lmap zero ins = s≤s z≤n
+          extr' lmap (ℕ.suc zero) ins = s≤s (s≤s z≤n)
+          extr' lmap (ℕ.suc (ℕ.suc n)) ins = s≤s (s≤s (lmap n (in-FakeLet (inj₂ ins))))
+ 
   -- shifting has no effect on closed terms (corollary of shift-env-size)
   closed-no-shift : {n : ℕ} {k : ℤ} {q : ℕ} {e : Exp {n}} {T : Ty {n}} → [] ⊢ e ∶ T → ↑ k , q [ e ] ≡ e
   closed-no-shift {n} {k} {zero} {e} {T} j = shift-env-size (free-vars-env-< j)
@@ -580,6 +650,13 @@ module operational where
   subst-change-in {N} {n} {m} {App e e₁} {s} {s'} p (in-App (inj₂ y)) = in-App (inj₂ (subst-change-in{N}{n}{m}{e₁} p y))
   subst-change-in {N} {n} {m} {LabE f e} {s} {s'} p (in-LabE (inj₁ (fst , fst₁ , snd))) = in-LabE (inj₁ (fst , (fst₁ , (subst-change-in{N}{n}{m}{f fst fst₁}{s}{s'} p snd))))
   subst-change-in {N} {n} {m} {LabE f e} {s} {s'} p (in-LabE (inj₂ y)) = in-LabE (inj₂ (subst-change-in {N} {n} {m} {e} p y))
+  subst-change-in {N} {n} {m} {Prod e e'} {s} {s'} p (in-Prod (inj₁ x)) = in-Prod (inj₁ (subst-change-in{m = m}{e} p x))
+  subst-change-in {N} {n} {m} {Prod e e'} {s} {s'} (fst , snd) (in-Prod (inj₂ y)) = in-Prod (inj₂ (subst-change-in {N} {ℕ.suc n} {ℕ.suc m} {e'}
+                                                                                                    (notin-shift-one{N}{n}{s} fst , notin-shift-one {N} {n} {s'} snd) y))
+  subst-change-in {N} {n} {m} {FakeLet e e'} {s} {s'} p (in-FakeLet (inj₁ x)) = in-FakeLet (inj₁ (subst-change-in {N} {n} {m} {e} p x))
+  subst-change-in {N} {n} {m} {FakeLet e e'} {s} {s'} (fst , snd) (in-FakeLet (inj₂ y))
+    with notin-shift{k = 2} z≤n fst |  notin-shift{k = 2} z≤n snd
+  ...  | w | w' rewrite (n+2≡sucsucn{n}) = in-FakeLet (inj₂ (subst-change-in {N} {ℕ.suc (ℕ.suc n)} {ℕ.suc (ℕ.suc m)} {e'} (w , w') y))
 
   -- swapping of substitutions A & B if variables of A are not free in substitution term of B and vice versa
   subst-subst-swap : {N n m : ℕ} {e e' s : Exp {N}} → n ≢ m → ¬ n ∈` e' → ¬ m ∈` e → [ n ↦ e ] ([ m ↦ e' ] s) ≡ [ m ↦ e' ] ([ n ↦ e ] s)
@@ -607,6 +684,12 @@ module operational where
   subst-subst-swap {N} {n} {m} {e} {e'} {App s s₁} neq nin nin' = cong₂ App (subst-subst-swap{s = s} neq nin nin') (subst-subst-swap{s = s₁} neq nin nin')
   subst-subst-swap {N} {n} {m} {e} {e'} {LabI x} neq nin nin' = refl
   subst-subst-swap {N} {n} {m} {e} {e'} {LabE f s} neq nin nin' = cong₂ LabE (f-ext (λ l → f-ext (λ x → subst-subst-swap{s = f l x} neq nin nin' ))) (subst-subst-swap{s = s} neq nin nin')
+  subst-subst-swap {N} {n} {m} {e} {e'} {Prod s s'} neq nin nin'
+    with (notin-shift-one nin) | (notin-shift-one nin')
+  ...  | w | w' = cong₂ Prod (subst-subst-swap{s = s} neq nin nin') (subst-subst-swap{s = s'} (n≢m⇒sucn≢sucm neq) w w')
+  subst-subst-swap {N} {n} {m} {e} {e'} {FakeLet s s'} neq nin nin'
+    with notin-shift{k = 2} z≤n nin |  notin-shift{k = 2} z≤n nin'
+  ...  | w | w' rewrite (n+2≡sucsucn{n}) | (n+2≡sucsucn{m}) = cong₂ FakeLet (subst-subst-swap{s = s} neq nin nin') (subst-subst-swap{s = s'} (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) w w')
 
   -- this should be true for all k, but limiting to positive k makes the proof simpler
   aux-calc-3 : {m x : ℕ} {k : ℤ} → k >ᶻ + 0 → ∣ + m +ᶻ k ∣ ≡ ∣ + x +ᶻ k ∣ → m ≡ x
@@ -665,7 +748,20 @@ module operational where
   subst-shift-swap {n} {k} {x} {q} {App s₁ s₂} {e} gt = cong₂ App (subst-shift-swap {n} {k} {x} {q} {s₁} {e} gt) (subst-shift-swap {n} {k} {x} {q} {s₂} {e} gt)
   subst-shift-swap {n} {k} {x} {q} {LabI ins} {e} gt = refl
   subst-shift-swap {n} {k} {x} {q} {LabE f s} {e} gt = cong₂ LabE (f-ext (λ l → f-ext (λ ins → subst-shift-swap {n} {k} {x} {q} {f l ins} {e} gt))) (subst-shift-swap {n} {k} {x} {q} {s} {e} gt)
-
+  subst-shift-swap {n} {k} {x} {q} {Prod s s'} {e} gt
+    with (subst-shift-swap{n}{k}{ℕ.suc x}{ℕ.suc q}{s'}{↑¹[ e ]} gt)
+  ...  | w
+       rewrite (↑k,sucq[↑1,c[s]]≡↑1,c[↑k,q[s]] {n} {k} {q} {0} {e} z≤n gt)
+             | (suc[↑ᴺk,l[x]]≡↑ᴺk,sucl[sucx] {k} {q} {x} gt)
+             = cong₂ Prod (subst-shift-swap {n} {k} {x} {q} {s} {e} gt) w
+  subst-shift-swap {n} {k} {x} {q} {FakeLet s s'} {e} gt
+    with (subst-shift-swap{n}{k}{ℕ.suc (ℕ.suc x)}{ℕ.suc (ℕ.suc q)}{s'}{↑ + 2 , 0 [ e ]} gt)
+  ...  | w
+       rewrite (↑k,sucsucq[↑2,c[s]]≡↑2,c[↑k,q[s]] {n} {k} {q} {0} {e} z≤n gt)
+             | sym (suc[↑ᴺk,l[x]]≡↑ᴺk,sucl[sucx] {k} {(ℕ.suc q)} {(ℕ.suc x)} gt )
+             | sym (suc[↑ᴺk,l[x]]≡↑ᴺk,sucl[sucx] {k} {q} {x} gt )
+               = cong₂ FakeLet (subst-shift-swap {n} {k} {x} {q} {s} {e} gt) w
+  {-
   --- properties and manipulation of environments
 
   -- type to determine whether var type judgement in env. (Δ ++ Γ) is in Δ or Γ
