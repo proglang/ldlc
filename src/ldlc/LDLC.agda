@@ -169,6 +169,21 @@ module defs where
     CSigma : {Γ : TEnv {n}} {A B A' B' : Ty} {ok : Γ ⊢ A} → Γ ⊢ A ≡ᵀ B → ⟨ A , Γ ⟩ {ok} ⊢ A' ≡ᵀ B' → Γ ⊢ Sigma A A' ≡ᵀ Sigma B B'
     CLab : {Γ : TEnv {n}} {s : Subset n} {f f' : (∀ l → l ∈ s → Ty)} {e : Exp {n}} → (v : Val e) → (∀ l i → Γ ⊢ (f l i) ≡ᵀ (f' l i)) → Γ ⊢ Case f e ≡ᵀ Case f' e
 
+  {-
+  data Ty {n : ℕ} : Set where
+    Label : Subset n → Ty
+    Pi : Ty {n} → Ty {n} → Ty
+    Sigma : Ty {n} → Ty {n} → Ty
+    Case : {s : Subset n} → (f : ∀ l → l ∈ s → Ty {n}) → Exp{n} → Ty 
+  -}
+  
+  -- Normalform of types; no redex possible
+  data Nf {n : ℕ} : Ty → Set where
+    NLab : {s : Subset n} → Nf (Label s)
+    NPi : {A B : Ty {n}} → Nf (Pi A B)
+    NSigma : {A B : Ty {n}} → Nf (Sigma A B)
+    
+    
 {-
 -- denotational semantics
 module denotational where
@@ -812,11 +827,64 @@ module operational where
           ...  | w rewrite (length[A++B]≡length[A]+length[B]{n}{Δ}{Γ}) = a<b≤c⇒a<c w (m≤m+n (length Δ) (length Γ))
   ext-behind {n} {Δ} {Γ} {T} {.(LabE _ (Var _))} (TLabEx f' j) = TLabEx (λ l i → ext-behind (f' l i)) (ext-behind j)
 
+  --- type inequalities
 
-  --- general typing properties
- 
-  subset-eq : {n : ℕ} {s s' : Subset n} → Label s ≡ Label s' → s ≡ s'
-  subset-eq {n} {s} {.s} refl = refl
+  ≢ᵀ-trans : {n : ℕ} {A B C : Ty {n}} → [] ⊢ A ≡ᵀ B → ¬ ([] ⊢ B ≡ᵀ C) → ¬ ([] ⊢ A ≡ᵀ C)
+  ≢ᵀ-trans {n} {A} {B} {C} j not l = contradiction (CTrans (CSym j) l) not
+
+  conv-nf : {n : ℕ} {e : Exp {n}} {T : Ty {n}} → [] ⊢ T → ∃[ T' ]( (Nf T') × ([] ⊢ T ≡ᵀ T'))
+  conv-nf {n} {e} {T} q = {!!}
+
+  Pi≢ᵀLab : {n : ℕ} {A B : Ty {n}} {s : Subset n} → ¬ ([] ⊢ Pi A B ≡ᵀ Label s)
+  Lab≢ᵀPi : {n : ℕ} {A B : Ty {n}} {s : Subset n} → ¬ ([] ⊢ Label s ≡ᵀ Pi A B)
+  Pi≢ᵀSigma : {n : ℕ} {A B A' B' : Ty {n}} → ¬ ([] ⊢ Pi A B ≡ᵀ Sigma A' B')
+  Sigma≢ᵀPi : {n : ℕ} {A B A' B' : Ty {n}} → ¬ ([] ⊢ Sigma A B ≡ᵀ Pi A' B')
+
+  Pi≢ᵀLab {n} {A} {B} {s} j = {!!}
+{-
+  Pi≢ᵀLab {n} {A} {B} {s} (CSym eq) = Lab≢ᵀPi eq
+--  Pi≢ᵀLab {n} {A} {B} {s} (CTrans eq eq₁) = {!!}
+  Pi≢ᵀLab {n} {A} {B} {s} (CTrans eq eq₁)
+    with conv-nf (TPiF {!!} {!!})
+  ...  | Label x , fst , snd = contradiction snd Pi≢ᵀLab
+  ...  | Pi A' B' , fst , snd = {!!}
+  ...  | Sigma fst fst₁ , snd = {!!}
+ -}
+
+  Lab≢ᵀPi {n} {A} {B} {s} (CSym j) = Pi≢ᵀLab j
+  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Label x} j j₁) = Lab≢ᵀPi j₁
+  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Pi T' T''} j j₁) = Lab≢ᵀPi j
+  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Sigma T' T''} j j₁) = contradiction j {!!}
+  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Case f x} j j₁) = {!!}
+
+
+  case-redex-eq : {n : ℕ} {s : Subset n} {f : (l : Fin n) → l ∈ s → Ty} {e : Exp} {T T' : Ty} → ([] ⊢ Case f e ≡ᵀ T × [] ⊢ Case f e ≡ᵀ T') → [] ⊢ T ≡ᵀ T'
+  case-redex-eq {n} {s} {f} {e} {T} {T'} (fst , snd) = CTrans (CSym fst) snd
+
+  type-lab : {n : ℕ} {T : Ty {n}} {x : Fin n} → [] ⊢ LabI x ∶ T → ∃[ s ]( [] ⊢ T ≡ᵀ Label s )
+  type-lab {n} {Label x₁} {x} (TLabI ins) = x₁ , CRefl
+  type-lab {n} {e} {x} (TConv j y)
+    with type-lab j
+  ...  | fst , snd = fst , CTrans (CSym y) snd
+
+  type-prod : {n : ℕ} {T : Ty {n}} {e e' : Exp} → [] ⊢ Prod e e' ∶ T → ∃[ A ](∃[ B ]( [] ⊢ T ≡ᵀ Sigma A B ))
+  type-prod {n} {e} {x} (TSigmaI{A = A}{B = B} y y') = A , (B , CRefl)
+  type-prod {n} {e} {x} (TConv j y)
+    with type-prod j
+  ...  | fst , fst₁ , snd = fst , (fst₁ , (CTrans (CSym y) snd))
+
+  canonical-forms-pi : {n : ℕ} {A B : Ty {n}} {e : Exp {n}} → [] ⊢ e ∶ Pi A B → Val e → ∃[ e' ]( e ≡ Abs e' )
+  canonical-forms-pi {n} {A} {B} {Var x} (TConv j x₁) VVar = contradiction (in-Var) (closed-free-vars j x)
+  canonical-forms-pi {n} {A} {B} {Abs e} j v = e , refl
+  canonical-forms-pi {n} {A} {B} {LabI x} (TConv {T = Label x₂} j x₁) v = contradiction x₁ Lab≢ᵀPi
+  canonical-forms-pi {n} {A} {B} {LabI x} (TConv {T = Pi T T₁} j x₁) v = (proj₁ (canonical-forms-pi j v)) , (≡-trans refl (proj₂ (canonical-forms-pi j v)))
+  canonical-forms-pi {n} {A} {B} {LabI x} (TConv {T = Sigma T T₁} j x₁) v = contradiction x₁ Sigma≢ᵀPi
+  canonical-forms-pi {n} {A} {B} {LabI x} (TConv {T = Case f x₂} j x₁) v = contradiction (case-redex-eq (proj₂ (type-lab j) , x₁)) Lab≢ᵀPi
+  canonical-forms-pi {n} {A} {B} {Prod e e'} (TConv {T = Label x₁} j x) v = contradiction x Lab≢ᵀPi
+  canonical-forms-pi {n} {A} {B} {Prod e e'} (TConv {T = Pi T' T''} j x) v = (proj₁ (canonical-forms-pi j v)) , (≡-trans refl (proj₂ (canonical-forms-pi j v)))
+  canonical-forms-pi {n} {A} {B} {Prod e e'} (TConv {T = Sigma T' T''} j x) v = contradiction x Sigma≢ᵀPi
+  canonical-forms-pi {n} {A} {B} {Prod e e'} (TConv {T = Case f x₁} j x) v = contradiction (case-redex-eq (proj₂ (proj₂ (type-prod j)) , x)) Sigma≢ᵀPi
+
 
   ---- progress and preservation
 
@@ -832,9 +900,20 @@ module operational where
   ... | step {e' = e'} x₁ = step x₁
   ... | value x₁ = value x₁
   progress {n} .(Abs _) {.(Pi _ _)} {TPiI j} = value VFun
-  progress {n} .(App e e') {T} {TPiE{e = e} {e' = e'} j j₁ x} = {!!}
+  progress {n} .(App e e') {T} {TPiE{e = e} {e' = e'} j j₁ x}
+    with progress e {j = j}
+  ... | step x₁ = step (ξ-App1 x₁)
+  ... | value x₁
+      with progress e' {j = j₁}
+  ...    | step x₂ = step (ξ-App2 x₁ x₂)
+  ...    | value x₂
+         with canonical-forms-pi j x₁
+  ...       | fst , snd rewrite snd = step (β-App x₂)
   progress {n} .(Prod _ _) {.(Sigma _ _)} {TSigmaI j j₁} = value VProd
-  progress {n} .(FakeLet _ _) {T} {TSigmaE j j₁} = {!!}
+  progress {n} .(FakeLet _ _) {T} {TSigmaE{e = e} {e' = e'} j j₁}
+    with progress e {j = j}
+  ...  | step x = {!!}
+  ...  | value x = step {!x!}
   progress {n} .(LabI _) {.(Label _)} {TLabI ins} = value VLab
   progress {n} .(LabE _ (LabI _)) {T} {TLabEl j j₁} = {!!}
   progress {n} .(LabE _ (Var _)) {T} {TLabEx f' j} = {!!}
@@ -958,6 +1037,27 @@ module operational where
   preserve' {n} {T} (LabE f (LabI l)) .(f x ins) (TLabEl{ins = ins'} j j') (β-LabE {x = x} ins) rewrite (∈-eq ins ins') = j
 
 -}
+
+
+  {-
+  conv-nf : {n : ℕ} {e : Exp {n}} {T : Ty} → [] ⊢ e ∶ T → ∃[ T' ]( (Nf T') × ([] ⊢ T ≡ᵀ T'))
+  conv-nf {n} {e} {T} (TConv j x) = {!!}
+  conv-nf {n} {.(Abs _)} {.(Pi _ _)} (TPiI j) = {!!}
+  conv-nf {n} {.(App _ _)} {.([ 0 ↦ _ ]ᵀ _)} (TPiE j j₁ x) = {!!}
+  conv-nf {n} {.(Prod _ _)} {.(Sigma _ _)} (TSigmaI j j₁) = {!!}
+  conv-nf {n} {.(FakeLet _ _)} {T} (TSigmaE j j₁) = {!!}
+  conv-nf {n} {.(LabI _)} {.(Label _)} (TLabI ins) = {!!}
+  conv-nf {n} {.(LabE _ (LabI _))} {T} (TLabEl j j₁) = {!!}
+  conv-nf {n} {.(LabE _ (Var _))} {T} (TLabEx f' j) = {!!}
+  
+  -- no. x ∈ s, x ∈ s', s ≠ s'; [] ⊢ LabI x ∶ Label s, [] ⊢ LabI x ∶ Label s', yet ¬ ([] ⊢ Label s ≡ᵀ Label s')
+  type-eq : {n : ℕ} {T T' : Ty {n}} {e : Exp} → [] ⊢ e ∶ T → [] ⊢ e ∶ T' → [] ⊢ T ≡ᵀ T'
+  type-eq {n} {T} {T'} {e} j j' = {!!}
+  -- no. same as above.
+  type-endure : {n : ℕ} {T T' : Ty {n}} {e : Exp} → [] ⊢ e ∶ T → ¬ ([] ⊢ T ≡ᵀ T') → ¬ ([] ⊢ e ∶ T')
+  type-endure {n} {T} {T'} {e} j neq j' = contraposition type-eq (λ x → contradiction (x j') neq) j
+  -}
+
 
 
 {- "within"-ext not required
