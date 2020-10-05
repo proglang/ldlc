@@ -40,7 +40,7 @@ module defs where
     LabI : Fin n → Exp {n}
     LabE : {s : Subset n} → (f : ∀ l → l ∈ s → Exp {n}) → Exp {n} → Exp {n}
     Prod : Exp {n} → Exp {n} → Exp {n}
-    FakeLet : Exp {n} → Exp {n} → Exp {n}
+    Let : Exp {n} → Exp {n} → Exp {n}
 
   data Val {n : ℕ} : Exp {n} → Set where
     VVar : {n : ℕ} → Val (Var n)
@@ -71,7 +71,7 @@ module defs where
   ↑ d , c [ LabI x ] = LabI x
   ↑ d , c [ LabE f e ] = LabE (λ l x → ↑ d , c [ (f l x) ]) (↑ d , c [ e ])
   ↑ d , c [ Prod e e' ] = Prod (↑ d , c [ e ]) (↑ d , (ℕ.suc c) [ e' ])
-  ↑ d , c [ FakeLet e e' ] = FakeLet (↑ d , c [ e ]) (↑ d , (ℕ.suc (ℕ.suc c)) [ e' ])
+  ↑ d , c [ Let e e' ] = Let (↑ d , c [ e ]) (↑ d , (ℕ.suc (ℕ.suc c)) [ e' ])
 
   -- shorthands
   ↑¹[_] : ∀ {n} → Exp {n} → Exp
@@ -92,7 +92,7 @@ module defs where
   [ k ↦ s ] LabI ins = LabI ins
   [ k ↦ s ] LabE f e = LabE (λ l x → [ k ↦ s ] (f l x)) ([ k ↦ s ] e)
   [ k ↦ s ] Prod e e' = Prod ([ k ↦ s ] e) ([ ℕ.suc k ↦ ↑¹[ s ] ] e')
-  [ k ↦ s ] FakeLet e e' = FakeLet ([ k ↦ s ] e) ([ (ℕ.suc (ℕ.suc k)) ↦ ↑ (ℤ.pos 2) , 0 [ s ] ] e')
+  [ k ↦ s ] Let e e' = Let ([ k ↦ s ] e) ([ (ℕ.suc (ℕ.suc k)) ↦ ↑ (ℤ.pos 2) , 0 [ s ] ] e')
 
   -- type substitution
   [_↦_]ᵀ_ : ∀ {n} → ℕ → Exp {n} → Ty {n} → Ty {n}
@@ -108,7 +108,7 @@ module defs where
     in-App : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ n ∈` e' → n ∈` App e e'
     in-LabE : {n : ℕ} {s : Subset N} {f : (∀ l → l ∈ s → Exp {N})} {e : Exp {N}} → (∃₂ λ l i → n ∈` (f l i)) ⊎ n ∈` e → n ∈` LabE {N} {s} f e
     in-Prod : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc n) ∈` e' → n ∈` Prod e e'
-    in-FakeLet : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc (ℕ.suc n)) ∈` e' → n ∈` FakeLet e e'
+    in-Let : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc (ℕ.suc n)) ∈` e' → n ∈` Let e e'
     
   -- Type environment, formation and typing of expressions
   data TEnv {n : ℕ} : Set
@@ -168,10 +168,10 @@ module defs where
     TSigmaI : {Γ : TEnv} {A B : Ty} {e e' : Exp} {ok : Γ ⊢ A} {ok' : ⟨ A , Γ ⟩ {ok} ⊢ B}  → Γ ⊢ e ∶ A → ⟨ A , Γ ⟩ {ok} ⊢ e' ∶ B → Γ ⊢ Prod e e' ∶ (Sigma A B)
     -- adjustment (also in TPiI): {ok' : ⟨ A , Γ ⟩ ⊢ B}
     --
-    -- since I couldn't prove that it holds without the rule (Γ ⊢ e ∶ T does not imply Γ ⊢ T, see TSigmaE: FakeLet e e' ∶ C because of e')
+    -- since I couldn't prove that it holds without the rule (Γ ⊢ e ∶ T does not imply Γ ⊢ T, see TSigmaE: Let e e' ∶ C because of e')
     TSigmaE : {Γ : TEnv {n}} {A B C : Ty} {e e' : Exp} {ok : Γ ⊢ A} {ok' : ⟨ A , Γ ⟩ {ok} ⊢ B} → Γ ⊢ e ∶ (Sigma A B)
                                                                                                → ⟨ B , ⟨ A , Γ ⟩ {ok} ⟩ {ok'} ⊢ e' ∶ C
-                                                                                               →  Γ ⊢ FakeLet e e' ∶ C
+                                                                                               →  Γ ⊢ Let e e' ∶ C
     TLabI : {Γ : TEnv} {x : Fin n} {s : Subset n} → (ins : x ∈ s) → Γ ⊢ LabI x ∶ Label {n} s
     TLabEl : {Γ : TEnv {n}} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} {scopecheck : ∀ l i m → m ∈` (f l i) → m <ᴺ length Γ}
                                                                                                     → Γ ⊢ f x ins ∶ T
@@ -246,7 +246,7 @@ module defs where
   ⊢∶-envsub {n} {.(Pi _ _)} {Γ} {Δ} {.(Abs _)} (TPiI{ok = ok}{ok' = ok'} j) eq = TPiI{ok = ⊢-envsub ok eq}{ok' = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j (tsuc eq (CRefl{ok = ⊢-envsub ok eq})))
   ⊢∶-envsub {n} {.([ 0 ↦ _ ]ᵀ _)} {Γ} {Δ} {.(App _ _)} (TPiE j j₁ x) eq = TPiE (⊢∶-envsub j eq) (⊢∶-envsub j₁ eq) (⊢-envsub x eq)
   ⊢∶-envsub {n} {.(Sigma _ _)} {Γ} {Δ} {.(Prod _ _)} (TSigmaI {ok = ok}{ok' = ok'} j j₁) eq = TSigmaI {ok = ⊢-envsub ok eq}{ok' =  ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j eq) (⊢∶-envsub j₁ (tsuc eq (CRefl{ok = ⊢-envsub ok eq})))
-  ⊢∶-envsub {n} {A} {Γ} {Δ} {.(FakeLet _ _)} (TSigmaE {ok = ok} {ok' = ok'} j j₁) eq
+  ⊢∶-envsub {n} {A} {Γ} {Δ} {.(Let _ _)} (TSigmaE {ok = ok} {ok' = ok'} j j₁) eq
     = TSigmaE{ok = ⊢-envsub ok eq}{ok' = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j eq) (⊢∶-envsub j₁ (tsuc (tsuc eq (CRefl{ok = ⊢-envsub ok eq})) (CRefl{ok = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))})))
   ⊢∶-envsub {n} {.(Label _)} {Γ} {Δ} {.(LabI _)} (TLabI ins) eq = TLabI ins
   ⊢∶-envsub {n} {A} {Γ} {Δ} {.(LabE _ (LabI _))} (TLabEl{scopecheck = scopecheck} j j₁) eq rewrite (≡ᵀ-length eq) = TLabEl{scopecheck = scopecheck} (⊢∶-envsub j eq) (⊢∶-envsub j₁ eq)
@@ -425,7 +425,7 @@ module defs where
   ⊢∶-envsub' {n} {A} {Γ} {Δ} {LabE f .(LabI _)} (TLabEl{scopecheck = sc} j j₁) eq rewrite (≡ᵀ'-length eq) = TLabEl{scopecheck = sc} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ eq)
   ⊢∶-envsub' {n} {A} {Γ} {Δ} {LabE f .(Var _)} (TLabEx f' j) eq = TLabEx (λ l i → ⊢∶-envsub' (f' l i) eq) (⊢∶-envsub' j eq)
   ⊢∶-envsub' {n} {.(Sigma _ _)} {Γ} {Δ} {Prod e e₁} (TSigmaI{ok = ok}{ok' = ok'} j j₁) eq = TSigmaI{ok = ⊢-envsub' ok eq}{ok' = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub ok (≡ᵀ'⊆≡ᵀ-env eq)}))} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})))
-  ⊢∶-envsub' {n} {A} {Γ} {Δ} {FakeLet e e₁} (TSigmaE{ok = ok}{ok' = ok'} j j₁) eq = TSigmaE{ok = ⊢-envsub' ok eq}{ok' = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ (tsuc (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})) (CRefl'{ok = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))})))
+  ⊢∶-envsub' {n} {A} {Γ} {Δ} {Let e e₁} (TSigmaE{ok = ok}{ok' = ok'} j j₁) eq = TSigmaE{ok = ⊢-envsub' ok eq}{ok' = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ (tsuc (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})) (CRefl'{ok = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))})))
 
   ⊢≡ᵀ-envsub' {n} {A} {.A} {Γ} {Δ} (CRefl'{ok = ok}) eq = CRefl'{ok = ⊢-envsub' ok eq}
   ⊢≡ᵀ-envsub' {n} {A} {.(Case _ (LabI _))} {Γ} {Δ} (CLabEta' x x₁ j) eq = CLabEta' (⊢∶-envsub' x eq) (λ l ins' → ⊢-envsub' (x₁ l ins') eq) (⊢≡ᵀ-envsub' j eq)
@@ -447,29 +447,6 @@ module defs where
     NPi : {A B : Ty {n}} → Nf (Pi A B)
     NSigma : {A B : Ty {n}} → Nf (Sigma A B)
    
-{-
--- denotational semantics
-module denotational where
-  open defs
-
-  Val : {n : ℕ} → Ty {n} → Set
-  Val (Fun Ty₁ Ty₂) = (Val Ty₁) → (Val Ty₂)
-  Val {n} (Label s) = Σ (Fin n) (λ x → x ∈ s)
-
-  access : {n m : ℕ} {Γ : Env {n}} {T : Ty {n}} → m ∶ T ∈ Γ → All Val Γ → Val T
-  access here (V ∷ Γ) = V
-  access (there J) (V ∷ Γ) = access J Γ
-
-  eval : {n : ℕ} {Γ : Env {n}} {T : Ty {n}} {e : Exp {n}} → Γ ⊢ e ∶ T → All Val Γ → Val T
-  eval (TVar c) Val-Γ = access c Val-Γ 
-  eval (TAbs TJ) Val-Γ = λ V → eval TJ (V ∷ Val-Γ)
-  eval (TApp TJ TJ₁) Val-Γ = (eval TJ Val-Γ) (eval TJ₁ Val-Γ)
-  eval (TLabI {x = x} ins) Val-Γ = x , ins
-  eval (TLabEl {x = x}{ins = ins}{f = f} j j') Val-Γ = eval j Val-Γ
-  eval (TLabEx {m = m}{s}{f} f' j) Val-Γ
-    with eval j Val-Γ    -- evaluate variable
-  ... | x , ins = eval (f' x ins) Val-Γ
--}
 
 -- operational semantics (call-by-value)
 module operational where
@@ -480,9 +457,9 @@ module operational where
   data _⇒_ {n : ℕ} : Exp {n} → Exp {n} → Set where
     ξ-App1 : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → App e₁ e₂ ⇒ App e₁' e₂
     ξ-App2 : {e e' v : Exp} → Val v → e ⇒ e' → App v e ⇒ App v e'
-    ξ-FakeLet : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → FakeLet e₁ e₂ ⇒ FakeLet e₁' e₂
+    ξ-Let : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → Let e₁ e₂ ⇒ Let e₁' e₂
     β-App : {e v : Exp} → Val v → (App (Abs e) v) ⇒ (↑⁻¹[ ([ 0 ↦ ↑¹[ v ] ] e) ])
-    β-FakeLet : {e e' e'' : Exp} → FakeLet (Prod e e') e'' ⇒ ↑ (ℤ.negsuc 1) , 0 [ ([ 0 ↦ ↑ (ℤ.pos 1) , 0 [ e ] ] ([ 0 ↦ ↑ (ℤ.pos 1) , 1 [ e' ] ] e'')) ]
+    β-Let : {e e' e'' : Exp} → Let (Prod e e') e'' ⇒ ↑ (ℤ.negsuc 1) , 0 [ ([ 0 ↦ ↑ (ℤ.pos 1) , 0 [ e ] ] ([ 0 ↦ ↑ (ℤ.pos 1) , 1 [ e' ] ] e'')) ]
     β-LabE : {s : Subset n} {f : ∀ l → l ∈ s → Exp} {x : Fin n} → (ins : x ∈ s) → LabE f (LabI x) ⇒ f x ins
 
   ---- properties & lemmas
@@ -554,7 +531,7 @@ module operational where
   ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {LabI ins} = refl
   ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {LabE f e} = cong₂ LabE (f-ext (λ x → f-ext (λ ins →  ↑⁻¹ₖ[↑¹ₖ[s]]≡s)))  ↑⁻¹ₖ[↑¹ₖ[s]]≡s
   ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {Prod e e'} = cong₂ Prod ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
-  ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {FakeLet e e'} = cong₂ FakeLet ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
+  ↑⁻¹ₖ[↑¹ₖ[s]]≡s {n} {Let e e'} = cong₂ Let ↑⁻¹ₖ[↑¹ₖ[s]]≡s ↑⁻¹ₖ[↑¹ₖ[s]]≡s
 
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] : {n : ℕ} {k l : ℤ} {c : ℕ} {s : Exp {n}} → l ≥ᶻ +0 → ↑ k , c [ ↑ l , c [ s ] ] ≡ ↑ (l +ᶻ k) , c [ s ]
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {Var x} ge
@@ -575,7 +552,7 @@ module operational where
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {LabI ins} le = refl
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {LabE f e} le = cong₂ LabE (f-ext (λ x → f-ext (λ ins → ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {f x ins} le))) ( ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {e} le)
   ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {Prod e e'} le = cong₂ Prod (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le) (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le)
-  ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {FakeLet e e'} le = cong₂ FakeLet (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le) (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le)
+  ↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] {n} {k} {l} {c} {Let e e'} le = cong₂ Let (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le) (↑ᵏ[↑ˡ[s]]≡↑ᵏ⁺ˡ[s] le)
   
 
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] : {n : ℕ} {k l : ℤ} {q c : ℕ} {s : Exp {n}} →  + q ≤ᶻ + c +ᶻ l → c ≤ᴺ q → ↑ k , q [ ↑ l , c [ s ] ] ≡ ↑ (l +ᶻ k) , c [ s ]
@@ -598,7 +575,7 @@ module operational where
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {LabI e} ge₁ ge₂ = refl
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {LabE f e} ge₁ ge₂ = cong₂ LabE (f-ext (λ x → f-ext (λ ins → ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {f x ins} ge₁ ge₂))) (↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {e} ge₁ ge₂)
   ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {Prod e e'} ge₁ ge₂ = cong₂ Prod (↑k,q[↑l,c[s]]≡↑l+k,c[s] ge₁ ge₂) (↑k,q[↑l,c[s]]≡↑l+k,c[s] ((+q≤+c+l⇒+1q≤+1c+l{q}{c}{l} ge₁)) (s≤s ge₂))
-  ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {FakeLet e e'} ge₁ ge₂ = cong₂ FakeLet (↑k,q[↑l,c[s]]≡↑l+k,c[s] ge₁ ge₂)
+  ↑k,q[↑l,c[s]]≡↑l+k,c[s] {n} {k} {l} {q} {c} {Let e e'} ge₁ ge₂ = cong₂ Let (↑k,q[↑l,c[s]]≡↑l+k,c[s] ge₁ ge₂)
                                                                                      (↑k,q[↑l,c[s]]≡↑l+k,c[s] ((+q≤+c+l⇒+1q≤+1c+l{ℕ.suc q}{ℕ.suc c}{l} (+q≤+c+l⇒+1q≤+1c+l{q}{c}{l} ge₁))) (s≤s (s≤s ge₂)))
 
   aux-calc-2 : {x l : ℕ} {k : ℤ} → k >ᶻ + 0 → ∣ + (x +ᴺ l) +ᶻ k ∣ ≡ ∣ + x +ᶻ k ∣ +ᴺ l
@@ -638,7 +615,7 @@ module operational where
   ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {LabI x} le le' = refl
   ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {LabE f s} le le' = cong₂ LabE (f-ext (λ x → f-ext (λ ins → ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {f x ins} le le'))) (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {s} le le')
   ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {Prod e e'} le le' = cong₂ Prod (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] le le') (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] (s≤s le) le')
-  ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {FakeLet e e'} le le' = cong₂ FakeLet (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] le le') (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] (s≤s (s≤s le)) le')
+  ↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] {n} {k} {q} {c} {l} {Let e e'} le le' = cong₂ Let (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] le le') (↑k,q+l[↑l,c[s]]≡↑l,c[↑k,q[s]] (s≤s (s≤s le)) le')
 
   -- corollaries
   ↑k,sucq[↑1,c[s]]≡↑1,c[↑k,q[s]] : {n : ℕ} {k : ℤ} {q c : ℕ} {s : Exp {n}} → c ≤ᴺ q → + 0 <ᶻ k →  ↑ k , ℕ.suc q [ ↑ + 1 , c [ s ] ] ≡ ↑ + 1 , c [ ↑ k , q [ s ] ]
@@ -674,7 +651,7 @@ module operational where
   ↑⁰-refl {n} {c} {LabI x} = refl
   ↑⁰-refl {n} {c} {LabE x e} = cong₂ LabE (f-ext (λ l → f-ext λ i → ↑⁰-refl{n}{c}{x l i})) (↑⁰-refl{n}{c}{e})
   ↑⁰-refl {n} {c} {Prod e e'} = cong₂ Prod ↑⁰-refl ↑⁰-refl
-  ↑⁰-refl {n} {c} {FakeLet e e'} = cong₂ FakeLet ↑⁰-refl ↑⁰-refl
+  ↑⁰-refl {n} {c} {Let e e'} = cong₂ Let ↑⁰-refl ↑⁰-refl
 
   --- properties of substitution
 
@@ -728,8 +705,8 @@ module operational where
   ...  | fst , snd | inj₁ (fst₁ , fst₂ , snd₁) = notin-shift geq (¬∃⟶∀¬ (¬∃⟶∀¬ fst fst₁) fst₂) snd₁
   notin-shift {N} {n} {k} {q} {Prod e e'} geq j (in-Prod (inj₁ x)) = notin-shift geq (λ x₁ → contradiction (in-Prod (inj₁ x₁)) j) x
   notin-shift {N} {n} {k} {q} {Prod e e'} geq j (in-Prod (inj₂ y)) = notin-shift (s≤s geq) (λ x → contradiction (in-Prod (inj₂ x)) j) y
-  notin-shift {N} {n} {k} {q} {FakeLet e e'} geq j (in-FakeLet (inj₁ x)) = notin-shift geq (λ x₁ → contradiction (in-FakeLet (inj₁ x₁)) j) x
-  notin-shift {N} {n} {k} {q} {FakeLet e e'} geq j (in-FakeLet (inj₂ y)) = notin-shift (s≤s (s≤s geq)) (λ x → contradiction (in-FakeLet (inj₂ x)) j) y
+  notin-shift {N} {n} {k} {q} {Let e e'} geq j (in-Let (inj₁ x)) = notin-shift geq (λ x₁ → contradiction (in-Let (inj₁ x₁)) j) x
+  notin-shift {N} {n} {k} {q} {Let e e'} geq j (in-Let (inj₂ y)) = notin-shift (s≤s (s≤s geq)) (λ x → contradiction (in-Let (inj₂ x)) j) y
 
 
   -- corollary
@@ -751,7 +728,7 @@ module operational where
     with dm2 (contraposition in-LabE nin)
   ...  | fst , snd = cong₂ LabE (f-ext (λ l → f-ext (λ x₁ → subst-refl-notin{e' = e'} (¬∃⟶∀¬ (¬∃⟶∀¬ (fst) l) x₁)))) (subst-refl-notin (snd))
   subst-refl-notin {N} {n} {Prod e e'} {e''} nin = cong₂ Prod (subst-refl-notin (λ x → contradiction (in-Prod (inj₁ x)) nin)) (subst-refl-notin (λ x → contradiction (in-Prod (inj₂ x)) nin))
-  subst-refl-notin {N} {n} {FakeLet e e'} {e''} nin = cong₂ FakeLet (subst-refl-notin (λ x → contradiction (in-FakeLet (inj₁ x)) nin)) (subst-refl-notin (λ x → contradiction (in-FakeLet (inj₂ x)) nin))
+  subst-refl-notin {N} {n} {Let e e'} {e''} nin = cong₂ Let (subst-refl-notin (λ x → contradiction (in-Let (inj₁ x)) nin)) (subst-refl-notin (λ x → contradiction (in-Let (inj₂ x)) nin))
 
   notin-subst : {N n : ℕ} {e e' : Exp {N}} → ¬ n ∈` e' → ¬ (n ∈` ([ n ↦ e' ] e))
   notin-subst {N} {n} {Var x} {e'} nin
@@ -775,8 +752,8 @@ module operational where
   notin-subst {N} {n} {Prod e e'} {e''} nin (in-Prod (inj₂ y))
     with notin-shift{k = 1} z≤n nin
   ...  | w rewrite (n+1≡sucn{n}) =  notin-subst {n = ℕ.suc n}{e = e'}{e' = ↑¹[ e'' ]} w y 
-  notin-subst {N} {n} {FakeLet e e'} {e''} nin (in-FakeLet (inj₁ x)) = notin-subst{e = e} nin x
-  notin-subst {N} {n} {FakeLet e e'} {e''} nin (in-FakeLet (inj₂ y))
+  notin-subst {N} {n} {Let e e'} {e''} nin (in-Let (inj₁ x)) = notin-subst{e = e} nin x
+  notin-subst {N} {n} {Let e e'} {e''} nin (in-Let (inj₂ y))
     with notin-shift{k = 2} z≤n nin
   ...  | w rewrite (n+2≡sucsucn{n}) = notin-subst {n = ℕ.suc (ℕ.suc n)} {e = e'} {e' = ↑ + 2 , 0 [ e'' ]} w y
 
@@ -796,8 +773,8 @@ module operational where
   subst-in-neq {N} {n} {m} {LabE f e} {s} nin (in-LabE (inj₂ y)) = subst-in-neq{e = e} nin y
   subst-in-neq {N} {n} {m} {Prod e e'} {s} nin (in-Prod (inj₁ x)) = subst-in-neq{e = e} nin x
   subst-in-neq {N} {n} {m} {Prod e e'} {s} nin (in-Prod (inj₂ y)) = sucn≢sucm⇒n≢m (subst-in-neq{e = e'} (notin-shift-one nin) y) 
-  subst-in-neq {N} {n} {m} {FakeLet e e'} {s} nin (in-FakeLet (inj₁ x)) = subst-in-neq{e = e} nin x
-  subst-in-neq {N} {n} {m} {FakeLet e e'} {s} nin (in-FakeLet (inj₂ y))
+  subst-in-neq {N} {n} {m} {Let e e'} {s} nin (in-Let (inj₁ x)) = subst-in-neq{e = e} nin x
+  subst-in-neq {N} {n} {m} {Let e e'} {s} nin (in-Let (inj₂ y))
     with notin-shift{k = 2} z≤n nin
   ...  | w rewrite (n+2≡sucsucn{n}) = sucn≢sucm⇒n≢m (sucn≢sucm⇒n≢m (subst-in-neq{e = e'} w y))
 
@@ -818,8 +795,8 @@ module operational where
   ...  | inj₂ y = in-LabE (inj₂ (subst-in neq y))
   subst-in {N} {n} {m} {Prod e e'} {e''} neq (in-Prod (inj₁ x)) = in-Prod (inj₁ (subst-in neq x))
   subst-in {N} {n} {m} {Prod e e'} {e''} neq (in-Prod (inj₂ y)) = in-Prod (inj₂ (subst-in (n≢m⇒sucn≢sucm neq) y))
-  subst-in {N} {n} {m} {FakeLet e e'} {e''} neq (in-FakeLet (inj₁ x)) = in-FakeLet (inj₁ (subst-in neq x))
-  subst-in {N} {n} {m} {FakeLet e e'} {e''} neq (in-FakeLet (inj₂ y)) = in-FakeLet (inj₂ (subst-in (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) y))
+  subst-in {N} {n} {m} {Let e e'} {e''} neq (in-Let (inj₁ x)) = in-Let (inj₁ (subst-in neq x))
+  subst-in {N} {n} {m} {Let e e'} {e''} neq (in-Let (inj₂ y)) = in-Let (inj₂ (subst-in (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) y))
 
   -- if n ≢ m, n ∉ e', n ∈ [ m ↦ e' ] e, then n ∈ e
   subst-in-reverse : {N n m : ℕ} {e e' : Exp {N}} → n ≢ m → ¬ (n ∈` e') → n ∈` ([ m ↦ e' ] e) → n ∈` e
@@ -834,10 +811,10 @@ module operational where
   subst-in-reverse {N} {n} {m} {LabE f e} {e'} neq nin (in-LabE (inj₂ y)) = in-LabE (inj₂ (subst-in-reverse neq nin y))
   subst-in-reverse {N} {n} {m} {Prod e e'} {e''} neq nin (in-Prod (inj₁ x)) = in-Prod (inj₁ (subst-in-reverse neq nin x))
   subst-in-reverse {N} {n} {m} {Prod e e'} {e''} neq nin (in-Prod (inj₂ y)) = in-Prod (inj₂ (subst-in-reverse (n≢m⇒sucn≢sucm neq) (notin-shift-one{e = e''} nin) y))
-  subst-in-reverse {N} {n} {m} {FakeLet e e'} {e''} neq nin (in-FakeLet (inj₁ x)) = in-FakeLet (inj₁ (subst-in-reverse neq nin x))
-  subst-in-reverse {N} {n} {m} {FakeLet e e'} {e''} neq nin (in-FakeLet (inj₂ y))
+  subst-in-reverse {N} {n} {m} {Let e e'} {e''} neq nin (in-Let (inj₁ x)) = in-Let (inj₁ (subst-in-reverse neq nin x))
+  subst-in-reverse {N} {n} {m} {Let e e'} {e''} neq nin (in-Let (inj₂ y))
     with notin-shift{k = 2} z≤n nin
-  ...  | w rewrite (n+2≡sucsucn{n}) = in-FakeLet (inj₂ (subst-in-reverse (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) w y))
+  ...  | w rewrite (n+2≡sucsucn{n}) = in-Let (inj₂ (subst-in-reverse (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) w y))
 
   var-env-< : {N : ℕ} {Γ : TEnv {N}} {T : Ty} {n : ℕ} (j : n ∶ T ∈ Γ) → n <ᴺ (length Γ)
   var-env-< {N} {.(⟨ T , _ ⟩)} {T} {.0} here = s≤s z≤n
@@ -862,9 +839,9 @@ module operational where
   free-vars-env-< {N} {Prod e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
   free-vars-env-< {N} {Prod e e₁} {Γ} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₁ x)) = free-vars-env-< j n x
   free-vars-env-< {N} {Prod e e₁} {Γ} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₂ y)) = ≤-pred (free-vars-env-< j₁ (ℕ.suc n) y)
-  free-vars-env-< {N} {FakeLet e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
-  free-vars-env-< {N} {FakeLet e e₁} {Γ} {T} (TSigmaE j j₁) n (in-FakeLet (inj₁ x)) = free-vars-env-< j n x
-  free-vars-env-< {N} {FakeLet e e₁} {Γ} {T} (TSigmaE j j₁) n (in-FakeLet (inj₂ y)) = ≤-pred (≤-pred (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y))
+  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
+  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TSigmaE j j₁) n (in-Let (inj₁ x)) = free-vars-env-< j n x
+  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TSigmaE j j₁) n (in-Let (inj₂ y)) = ≤-pred (≤-pred (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y))
 
   -- closed expressions have no free variables
   closed-free-vars : {N : ℕ} {e : Exp {N}} {T : Ty {N}} → [] ⊢ e ∶ T → (∀ n → ¬ (n ∈` e))
@@ -876,9 +853,9 @@ module operational where
   closed-free-vars {N} {Prod e e₁} {T} (TConv j x) n = closed-free-vars j n
   closed-free-vars {N} {Prod e e₁} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₁ x)) = closed-free-vars j n x
   closed-free-vars {N} {Prod e e₁} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc n) y) (≤⇒≯ (s≤s z≤n))
-  closed-free-vars {N} {FakeLet e e₁} {T} (TConv j x) n = closed-free-vars j n
-  closed-free-vars {N} {FakeLet e e₁} {T} (TSigmaE j j₁) n (in-FakeLet (inj₁ x)) = closed-free-vars j n x
-  closed-free-vars {N} {FakeLet e e₁} {T} (TSigmaE j j₁) n (in-FakeLet (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y) (≤⇒≯ (s≤s (s≤s z≤n)))
+  closed-free-vars {N} {Let e e₁} {T} (TConv j x) n = closed-free-vars j n
+  closed-free-vars {N} {Let e e₁} {T} (TSigmaE j j₁) n (in-Let (inj₁ x)) = closed-free-vars j n x
+  closed-free-vars {N} {Let e e₁} {T} (TSigmaE j j₁) n (in-Let (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y) (≤⇒≯ (s≤s (s≤s z≤n)))
   closed-free-vars {N} {e} {T} j n x = contradiction (free-vars-env-< j n x) (≤⇒≯ z≤n)  -- App & LabE have the same proof
 
   -- shifting with a threshold above number of free variables has no effect
@@ -908,13 +885,13 @@ module operational where
           extr' : (∀ n → n ∈` Prod e e' → n <ᴺ q) → (∀ n → n ∈` e' → n <ᴺ ℕ.suc q)
           extr' lmap zero ins = s≤s z≤n
           extr' lmap (ℕ.suc n) ins = s≤s (lmap n (in-Prod (inj₂ ins)))
-  shift-env-size {n} {k} {q} {FakeLet e e'} lmap = cong₂ FakeLet (shift-env-size (extr lmap)) (shift-env-size (extr' lmap))
-    where extr : (∀ n → n ∈` FakeLet e e' → n <ᴺ q) → (∀ n → n ∈` e → n <ᴺ q)
-          extr lmap n ins = lmap n (in-FakeLet (inj₁ ins))
-          extr' : (∀ n → n ∈` FakeLet e e' → n <ᴺ q) → (∀ n → n ∈` e' → n <ᴺ ℕ.suc (ℕ.suc q))
+  shift-env-size {n} {k} {q} {Let e e'} lmap = cong₂ Let (shift-env-size (extr lmap)) (shift-env-size (extr' lmap))
+    where extr : (∀ n → n ∈` Let e e' → n <ᴺ q) → (∀ n → n ∈` e → n <ᴺ q)
+          extr lmap n ins = lmap n (in-Let (inj₁ ins))
+          extr' : (∀ n → n ∈` Let e e' → n <ᴺ q) → (∀ n → n ∈` e' → n <ᴺ ℕ.suc (ℕ.suc q))
           extr' lmap zero ins = s≤s z≤n
           extr' lmap (ℕ.suc zero) ins = s≤s (s≤s z≤n)
-          extr' lmap (ℕ.suc (ℕ.suc n)) ins = s≤s (s≤s (lmap n (in-FakeLet (inj₂ ins))))
+          extr' lmap (ℕ.suc (ℕ.suc n)) ins = s≤s (s≤s (lmap n (in-Let (inj₂ ins))))
  
   -- shifting has no effect on closed terms (corollary of shift-env-size)
   closed-no-shift : {n : ℕ} {k : ℤ} {q : ℕ} {e : Exp {n}} {T : Ty {n}} → [] ⊢ e ∶ T → ↑ k , q [ e ] ≡ e
@@ -935,10 +912,10 @@ module operational where
   subst-change-in {N} {n} {m} {Prod e e'} {s} {s'} p (in-Prod (inj₁ x)) = in-Prod (inj₁ (subst-change-in{m = m}{e} p x))
   subst-change-in {N} {n} {m} {Prod e e'} {s} {s'} (fst , snd) (in-Prod (inj₂ y)) = in-Prod (inj₂ (subst-change-in {N} {ℕ.suc n} {ℕ.suc m} {e'}
                                                                                                     (notin-shift-one{N}{n}{s} fst , notin-shift-one {N} {n} {s'} snd) y))
-  subst-change-in {N} {n} {m} {FakeLet e e'} {s} {s'} p (in-FakeLet (inj₁ x)) = in-FakeLet (inj₁ (subst-change-in {N} {n} {m} {e} p x))
-  subst-change-in {N} {n} {m} {FakeLet e e'} {s} {s'} (fst , snd) (in-FakeLet (inj₂ y))
+  subst-change-in {N} {n} {m} {Let e e'} {s} {s'} p (in-Let (inj₁ x)) = in-Let (inj₁ (subst-change-in {N} {n} {m} {e} p x))
+  subst-change-in {N} {n} {m} {Let e e'} {s} {s'} (fst , snd) (in-Let (inj₂ y))
     with notin-shift{k = 2} z≤n fst |  notin-shift{k = 2} z≤n snd
-  ...  | w | w' rewrite (n+2≡sucsucn{n}) = in-FakeLet (inj₂ (subst-change-in {N} {ℕ.suc (ℕ.suc n)} {ℕ.suc (ℕ.suc m)} {e'} (w , w') y))
+  ...  | w | w' rewrite (n+2≡sucsucn{n}) = in-Let (inj₂ (subst-change-in {N} {ℕ.suc (ℕ.suc n)} {ℕ.suc (ℕ.suc m)} {e'} (w , w') y))
 
   -- swapping of substitutions A & B if variables of A are not free in substitution term of B and vice versa
   subst-subst-swap : {N n m : ℕ} {e e' s : Exp {N}} → n ≢ m → ¬ n ∈` e' → ¬ m ∈` e → [ n ↦ e ] ([ m ↦ e' ] s) ≡ [ m ↦ e' ] ([ n ↦ e ] s)
@@ -969,9 +946,9 @@ module operational where
   subst-subst-swap {N} {n} {m} {e} {e'} {Prod s s'} neq nin nin'
     with (notin-shift-one nin) | (notin-shift-one nin')
   ...  | w | w' = cong₂ Prod (subst-subst-swap{s = s} neq nin nin') (subst-subst-swap{s = s'} (n≢m⇒sucn≢sucm neq) w w')
-  subst-subst-swap {N} {n} {m} {e} {e'} {FakeLet s s'} neq nin nin'
+  subst-subst-swap {N} {n} {m} {e} {e'} {Let s s'} neq nin nin'
     with notin-shift{k = 2} z≤n nin |  notin-shift{k = 2} z≤n nin'
-  ...  | w | w' rewrite (n+2≡sucsucn{n}) | (n+2≡sucsucn{m}) = cong₂ FakeLet (subst-subst-swap{s = s} neq nin nin') (subst-subst-swap{s = s'} (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) w w')
+  ...  | w | w' rewrite (n+2≡sucsucn{n}) | (n+2≡sucsucn{m}) = cong₂ Let (subst-subst-swap{s = s} neq nin nin') (subst-subst-swap{s = s'} (n≢m⇒sucn≢sucm (n≢m⇒sucn≢sucm neq)) w w')
 
   -- this should be true for all k, but limiting to positive k makes the proof simpler
   aux-calc-3 : {m x : ℕ} {k : ℤ} → k >ᶻ + 0 → ∣ + m +ᶻ k ∣ ≡ ∣ + x +ᶻ k ∣ → m ≡ x
@@ -1036,13 +1013,13 @@ module operational where
        rewrite (↑k,sucq[↑1,c[s]]≡↑1,c[↑k,q[s]] {n} {k} {q} {0} {e} z≤n gt)
              | (suc[↑ᴺk,l[x]]≡↑ᴺk,sucl[sucx] {k} {q} {x} gt)
              = cong₂ Prod (subst-shift-swap {n} {k} {x} {q} {s} {e} gt) w
-  subst-shift-swap {n} {k} {x} {q} {FakeLet s s'} {e} gt
+  subst-shift-swap {n} {k} {x} {q} {Let s s'} {e} gt
     with (subst-shift-swap{n}{k}{ℕ.suc (ℕ.suc x)}{ℕ.suc (ℕ.suc q)}{s'}{↑ + 2 , 0 [ e ]} gt)
   ...  | w
        rewrite (↑k,sucsucq[↑2,c[s]]≡↑2,c[↑k,q[s]] {n} {k} {q} {0} {e} z≤n gt)
              | sym (suc[↑ᴺk,l[x]]≡↑ᴺk,sucl[sucx] {k} {(ℕ.suc q)} {(ℕ.suc x)} gt )
              | sym (suc[↑ᴺk,l[x]]≡↑ᴺk,sucl[sucx] {k} {q} {x} gt )
-               = cong₂ FakeLet (subst-shift-swap {n} {k} {x} {q} {s} {e} gt) w
+               = cong₂ Let (subst-shift-swap {n} {k} {x} {q} {s} {e} gt) w
 
 
   --- typing: canonical forms, inequalities
@@ -1116,563 +1093,14 @@ module operational where
          with canonical-forms-pi j x₁
   ...       | fst , snd rewrite snd = step (β-App x₂)
   progress {n} .(Prod _ _) {.(Sigma _ _)} {TSigmaI j j₁} = value VProd
-  progress {n} .(FakeLet _ _) {T} {TSigmaE{e = e} {e' = e'} j j₁}
+  progress {n} .(Let _ _) {T} {TSigmaE{e = e} {e' = e'} j j₁}
     with progress e {j = j}
-  ...  | step x = step (ξ-FakeLet x)
+  ...  | step x = step (ξ-Let x)
   ...  | value x
        with canonical-forms-sigma j x
-  ...     | fst , snd , snd₁ rewrite snd₁ = step β-FakeLet
+  ...     | fst , snd , snd₁ rewrite snd₁ = step β-Let
   progress {n} .(LabI _) {.(Label _)} {TLabI ins} = value VLab
   progress {n} .(LabE _ (LabI _)) {T} {TLabEl{ins = ins} j j₁} = step (β-LabE ins)
   progress {n} (LabE f (Var m)) {T} {TLabEx f' j} = contradiction (free-vars-env-< j m in-Var) λ ()
 
-
-{-
-
-  ---
-
-  preserve-subst' : {n : ℕ} {T S : Ty {n} } {Δ : Env {n}} {e s : Exp {n}} {v : Val s} (j : (Δ ++ S ∷ []) ⊢ e ∶ T) (j' : [] ⊢ s ∶ S)
-                                                                           → Δ ⊢ [ length Δ ↦ s ] e ∶ T
-  preserve-subst' {n} {T} {S} {Δ} {(Var m)} {s} {v} (TVar{m} x) j'
-    with extract{n}{Δ}{S ∷ []}{T}{m} x
-  ...  | in-Δ x₁
-       with m ≟ᴺ length Δ
-  ...     | yes p = contradiction p (<⇒≢ (var-env-< x₁))
-  ...     | no ¬p
-          with m <ᴺ? length Δ
-  ...        | yes p' = TVar x₁
-  ...        | no ¬p' = contradiction (var-env-< x₁) ¬p'
-  preserve-subst' {n} {T} {S} {Δ} {(Var m)} {s} {v} (TVar{m} x) j'
-       | in-Γ x₁ x₂
-       with m ≟ᴺ length Δ
-  ...     | yes p
-          with ext{n}{[]}{Δ} j'
-  ...        | w
-               rewrite p
-                   | (env-type-equiv x)
-                   | (closed-no-shift {n} {+ length Δ} {0} {s} j')
-                   | (A++[]≡A{lzero}{Ty}{Δ})
-                   = w
-  preserve-subst' {n} {T} {S} {Δ} {(Var m)} {s} {v} (TVar{m} x) j'
-      | in-Γ x₁ x₂ | no ¬p
-          with m <ᴺ? length Δ
-  ...        | yes p' = contradiction x₁ (<⇒≱ p')
-  ...        | no ¬p'
-             with (<⇒≱ (≤∧≢⇒< (≤-step (≤∧≢⇒< (≮⇒≥ ¬p') (≢-sym ¬p))) (≢-sym (n≢m⇒sucn≢sucm ¬p))))
-  ...           | w  = contradiction (var-env-< x) (aux w)
-             where aux : ¬ (ℕ.suc m ≤ᴺ ℕ.suc (length Δ)) → ¬ (ℕ.suc m ≤ᴺ length (Δ ++ S ∷ []))
-                   aux t rewrite (length[A++B]≡length[A]+length[B]{A = Δ}{B = S ∷ []}) | (n+1≡sucn{length Δ})  = t
-  preserve-subst' {n} {.(Fun _ _)} {S} {Δ} {(Abs e')} {s} {v} (TAbs{T₁ = T₁}{T₂} j) j'
-    with preserve-subst'{n}{T₂}{S}{T₁ ∷ Δ}{e'}{s}{v} j j'
-  ...  | w
-       rewrite (closed-no-shift {n} {+ 1} {0} {s} j')
-             = TAbs w 
-  preserve-subst' {n} {T} {S} {Δ} {(App e e')} {s} {v} (TApp j j₁) j' = TApp (preserve-subst'{v = v} j j') (preserve-subst'{v = v} j₁ j')
-  preserve-subst' {n} {T} {S} {Δ} {LabI x} {s} {v} (TLabI ins) j' = TLabI ins
-  preserve-subst' {n} {T} {S} {Δ} {LabE{s = s'} f (LabI x)} {s} {v} (TLabEl{ins = ins}{scopecheck = sc} j j') j'' = TLabEl{ins = ins}{scopecheck = scopecheck} (preserve-subst'{v = v} j j'') (TLabI ins)
-    where scopecheck : (l : Fin n) (i : l ∈ s') (n' : ℕ) → n' ∈` ([ length Δ ↦ s ] f l i) → n' <ᴺ length Δ
-          scopecheck l i n' ins
-            with subst-in-neq{n}{n'}{length Δ}{f l i}{s} (closed-free-vars j'' n') ins
-          ...  | w
-               with (sc l i n' (subst-in-reverse{n}{n'}{length Δ}{e' = s} w (closed-free-vars j'' n') ins))
-          ...     | w'
-                  rewrite (length[A++B∷[]]≡suc[length[A]]{lzero}{Ty}{Δ}{S}) = ≤∧≢⇒< (≤-pred w') w
-  preserve-subst' {n} {T} {.(Fun _ _)} {Δ} {LabE f (Var m)} {Abs e} {VFun} (TLabEx f' (TVar{T = Label s} z)) (TAbs j')
-    with m ≟ᴺ length Δ | preserve-subst'{v = VFun} (TVar z) (TAbs j')
-  ...  | yes p | _ rewrite p = contradiction (env-type-equiv z) λ ()
-  ...  | no ¬p | w = TLabEx (rw (λ l i → preserve-subst'{v = VFun} (f' l i) (TAbs j'))) w
-       where rw : ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ length Δ ↦ Abs e ] ([ m ↦ LabI l ] f l i) ∶ T) 
-                → ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ m ↦ LabI l ] ([ length Δ ↦ Abs e ] f l i) ∶ T)
-             rw ρ l i
-               with ρ l i
-             ...  | w
-                  rewrite sym (subst-subst-swap{n}{length Δ}{m}{Abs e}{LabI l}{f l i} (≢-sym ¬p) (λ ()) (closed-free-vars (TAbs j') m)) = w
-  preserve-subst' {n} {T} {(Label s')} {Δ} {LabE f (Var m)} {LabI x} {VLab} (TLabEx f' (TVar{T = Label s} z)) (TLabI{s = s'} ins)
-    with m ≟ᴺ length Δ | preserve-subst'{v = VLab} (TVar z) (TLabI ins)
-  ...  | yes p | w
-       rewrite p
-             | subset-eq (env-type-equiv z)
-             =  TLabEl{f = λ l i → [ length Δ ↦ LabI x ] (f l i)}{scopecheck } (rw{e = f x ins} (preserve-subst'{v = VLab} (f' x ins) (TLabI{s = s'} ins))) w 
-       where 
-             -- agda didn't let me rewrite this directly
-             rw :  {e : Exp} →  (Δ ⊢ [ length Δ ↦ LabI x ] ([ length Δ ↦ LabI x ] e) ∶ T)
-                             → ( Δ ⊢ [ length Δ ↦ LabI x ] e ∶ T)
-             rw {e} j
-               rewrite sym (subst2-refl-notin{n}{length Δ}{LabI x}{LabI x}{e} (λ ())) = j
-             -- if n ∈` [length Δ ↦ LabI x] (f l i), then also n ∈` [length Δ ↦ LabI l] (f l i), since both LabI l and LabI x are closed
-             -- if n ∈` [length Δ ↦ LabI l] (f l i), then n < length (Δ ++ (S ∷ [])), we get this from f' ((Δ ++ S ∷ []) ⊢ [length Δ ↦ LabI l] (f l i) ∶ T) and free-vars-env-<
-             -- if n ∈` [length Δ ↦ LabI l] (f l i), then also n ≢ (length Δ), since LabI closed
-             -- hence n < length (Δ ++ (S ∷ [])) = length Δ + 1 ⇒ n ≤ length Δ, n ≤ length Δ and n ≢ length Δ implies n < length Δ
-             scopecheck : (l : Fin n) (i : l ∈ s') (n' : ℕ) → n' ∈` ([ length Δ ↦ LabI x ] f l i) → n' <ᴺ length Δ
-             scopecheck l i n' ins
-               with (free-vars-env-< (f' l i) n' (subst-change-in{n}{n'}{length Δ}{f l i}{LabI x}{LabI l} ((λ ()) , (λ ())) ins))       
-             ...  | w
-                  rewrite (length[A++B∷[]]≡suc[length[A]]{lzero}{Ty}{Δ}{Label s'})= ≤∧≢⇒< (≤-pred w) (subst-in-neq{n}{n'}{length Δ}{f l i}{LabI x} (λ ()) ins)
-  ...  | no ¬p | w = TLabEx (rw λ l i → preserve-subst'{v = VLab} (f' l i) (TLabI ins)) w
-       where rw : ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ length Δ ↦ LabI x ] ([ m ↦ LabI l ] f l i) ∶ T) 
-                → ((l : Fin n) (i : l ∈ s) → Δ ⊢ [ m ↦ LabI l ] ([ length Δ ↦ LabI x ] f l i) ∶ T)
-             rw ρ l i
-               with ρ l i
-             ...  | w
-                  rewrite sym (subst-subst-swap{n}{length Δ}{m}{LabI x}{LabI l}{f l i} (≢-sym ¬p) (λ ()) (closed-free-vars (TLabI ins) m)) = w
-
-
-  preserve' : {n : ℕ} {T : Ty {n}} (e e' : Exp) (j : [] ⊢ e ∶ T) (r : e ⇒ e') → [] ⊢ e' ∶ T
-  preserve' {n} {T} .(App e₁ _) .(App e₁' _) (TApp j j') (ξ-App1 {e₁ = e₁} {e₁' = e₁'} r) = TApp (preserve' e₁ e₁' j r) j'
-  preserve' {n} {T} .(App _ _) .(App _ _) (TApp j j') (ξ-App2{e = e}{e' = e'} x r) = TApp j (preserve' e e' j' r)
-  preserve' {n} {T} (App (Abs e) s') .(↑ -[1+ 0 ] , 0 [ [ 0 ↦ ↑ + 1 , 0 [ s' ] ] e ]) (TApp (TAbs j) j₁) (β-App x)
-    rewrite (closed-no-shift {n} {+ 1} {0} {s'} j₁)
-          | (closed-no-shift {n} { -[1+ 0 ]} {0} {[ 0 ↦ s' ] e} (preserve-subst'{Δ = []}{v = x} j j₁))
-          = preserve-subst'{Δ = []}{v = x} j j₁
-  preserve' {n} {T} (LabE f (LabI l)) .(f x ins) (TLabEl{ins = ins'} j j') (β-LabE {x = x} ins) rewrite (∈-eq ins ins') = j
-
--}
-  --- properties and manipulation of environments
-  {-
-  _++_ : {n : ℕ} → TEnv {n} → TEnv {n} → TEnv {n}
-  type-ok-env-ext : {n : ℕ} {Δ Γ : TEnv {n}} {T : Ty {n}} → Δ ⊢ T → (Δ ++ Γ) ⊢ T
-  type-conv-env-ext : {n : ℕ} {Δ Γ : TEnv {n}} {T T' : Ty {n}} → Δ ⊢ T ≡ᵀ T' → (Δ ++ Γ) ⊢ T ≡ᵀ T'
-  ext-behind : {n : ℕ} {Δ Γ : TEnv {n}} {T : Ty {n}} {e : Exp {n}} → Δ ⊢ e ∶ T → (Δ ++ Γ) ⊢ e ∶ T
-  var-ext-behind : {n : ℕ} {Δ Γ : TEnv {n}} {T : Ty} {x : ℕ} → x ∶ T ∈ Δ → x ∶ T ∈ (Δ ++ Γ)
-
-  [] ++ Γ = Γ
-  ⟨ T , Δ ⟩ {ok} ++ Γ = ⟨ T , (Δ ++ Γ) ⟩ {{!!}} -- {type-ok-env-ext ok}
-
-  env-tail-< : {n m : ℕ} {Δ Γ : TEnv {n}} → m <ᴺ length Δ → env-tail (Δ ++ Γ) m ≡ᵀ (env-tail Δ m ++ Γ)
-  env-tail-< {n} {m} {Δ} {Γ} leq = {!!}
-  {-
-  env-tail-< {n} {zero} {⟨ T , Δ ⟩} {Γ} leq = refl
-  env-tail-< {n} {ℕ.suc m} {⟨ T , Δ ⟩} {Γ} (s≤s leq) = env-tail-< leq 
-  -}
-
-  var-ext-behind {n} {⟨ T , Δ ⟩} {Γ} {.T} (here {ok = ok}) = here {ok = type-ok-env-ext ok}
-  var-ext-behind {n} {⟨ T' , Δ ⟩} {Γ} {T} (there {ok = ok} j) =  there {ok = type-ok-env-ext ok} (var-ext-behind j) 
-
-  var-ext-front : {n m : ℕ} {Γ : TEnv {n}} {T T' : Ty {n}} {ok : Γ ⊢ T'} → Γ ⊢ Var m ∶ T → (⟨ T' , Γ ⟩{ok}) ⊢ Var (ℕ.suc m) ∶ T
-  var-ext-front {n} {m} {Γ} {T} {T'} {ok} (TConv j x) = {!!}
-  {-
-    with var-ext-front j
-  ... | TConv w x₁ = {!TConv w x₁!}
-  ... | TVarE x₁ x₂ = {!!}
-  -}
-  var-ext-front {n} {.0} {.(⟨ _ , _ ⟩)} {T} {T'} {ok} (TVarE here x₁) = TVarE (there (here)) x₁
-  var-ext-front {n} {.(ℕ.suc _)} {.(⟨ _ , _ ⟩)} {T} {T'} {ok} (TVarE (there x) x₁) = TVarE (there (there x)) x₁
-
-  type-ok-env-ext {n} {Δ} {Γ} {.(Label _)} TLabF = TLabF
-  type-ok-env-ext {n} {Δ} {Γ} {.(Pi _ _)} (TPiF j j₁) = TPiF (type-ok-env-ext j) (type-ok-env-ext j₁)
-  type-ok-env-ext {n} {Δ} {Γ} {.(Sigma _ _)} (TSigmaF j j₁) = TSigmaF (type-ok-env-ext j) (type-ok-env-ext j₁)
-  type-ok-env-ext {n} {Δ} {Γ} {.(Case _ _)} (TCaseF f' v x) = TCaseF (λ l i → type-ok-env-ext (f' l i)) v (ext-behind x)
-
-  type-conv-env-ext {n} {Δ} {Γ} {T} {.T} (CRefl{ok = ok}) = CRefl{ok = type-ok-env-ext ok}
-  type-conv-env-ext {n} {Δ} {Γ} {T} {T'} (CSym j) = CSym (type-conv-env-ext j)
-  type-conv-env-ext {n} {Δ} {Γ} {T} {T'} (CTrans j j₁) = CTrans (type-conv-env-ext j) (type-conv-env-ext j₁)
-  type-conv-env-ext {n} {Δ} {Γ} {T} {.(Case (λ l i → T) (LabI _))} (CLabEta{ins = ins} x x₁) = CLabEta{ins = ins} (ext-behind{n}{Δ}{Γ} x) (type-ok-env-ext x₁)
-  type-conv-env-ext {n} {Δ} {Γ} {.(Case _ (LabI _))} {.(f y ins)} (CLabBeta{x = y}{f = f} x ins) = CLabBeta (type-ok-env-ext{n}{Δ}{Γ} x) ins
-  type-conv-env-ext {n} {Δ} {Γ} {(Pi A B)} {.(Pi _ _)} (CPi{ok = ok} j j₁) = CPi{ok = type-ok-env-ext ok} (type-conv-env-ext j) (type-conv-env-ext{n}{⟨ A , Δ ⟩}{Γ} j₁)
-  type-conv-env-ext {n} {Δ} {Γ} {(Sigma A B)} {.(Sigma _ _)} (CSigma{ok = ok} j j₁) = CSigma{ok = type-ok-env-ext ok} (type-conv-env-ext j) (type-conv-env-ext{n}{⟨ A , Δ ⟩}{Γ} j₁)
-  type-conv-env-ext {n} {Δ} {Γ} {.(Case _ _)} {.(Case _ _)} (CLab v x) = CLab (type-ok-env-ext v) (λ l i → type-conv-env-ext (x l i))
-
-  length[A++B]≡length[A]+length[B] : {n : ℕ} {A B : TEnv {n}} → length (A ++ B) ≡ length A +ᴺ length B
-  length[A++B]≡length[A]+length[B] {n} {[]} {B} = refl
-  length[A++B]≡length[A]+length[B] {n} {⟨ T , A ⟩} {B} = cong ℕ.suc (length[A++B]≡length[A]+length[B]{A = A}{B = B})
-  {-
-    Goal: env-tail (Δ ++ Γ) m ⊢ T ≡ᵀ T₁
-    Have: (env-tail Δ m ++ _Γ_6761) ⊢ T ≡ᵀ T₁
-  -}
-  
-  ext-behind {n} {Δ} {Γ} {T} {e} (TConv j x) = TConv (ext-behind{n}{Δ}{Γ} j) (type-conv-env-ext x)
-  ext-behind {n} {Δ} {Γ} {T} {Var m} (TVarE {m = m} j eq) = TVarE (var-ext-behind j) (⊢≡ᵀ-envsub ((type-conv-env-ext{Δ = env-tail Δ m}{Γ = Γ} eq)) {!!})
-  {-
-  ext-behind {n} {⟨ T₁ , Δ ⟩} {Γ} {T} {.(Var 0)} (TVarE {m = zero} here eq) = TVarE here (type-conv-env-ext eq)
-  ext-behind {n} {⟨ T₁ , Δ ⟩} {Γ} {T} {.(Var (ℕ.suc m))} (TVarE {m = ℕ.suc m} (there x) eq)
-    with (type-conv-env-ext{Γ = Γ} eq) | (var-env-< x)
-  ...  | w | w' = TVarE (there (var-ext-behind x)) (type-conv-env-ext (⊢≡ᵀ-envsub w (env-tail-< {!w'!})))
-  -}
-  {-
-    with ext-behind {n} {Δ} {Γ} {T} {Var m} (TVarE {m = m} x eq)
-  ... | w  = {!!} 
-  -}
-  {-
-    with (type-conv-env-ext{Γ = Γ} eq) | (var-env-< x)
-  ...  | w | w' rewrite (env-tail-<{n}{m}{Δ}{Γ} w')
-           = TVarE (var-ext-behind x) {!!} -- rewrite (env-tail-<{n}{m}{Δ}{Γ} ) rewrite  = TVarE (var-ext-behind x) {!type-conv-env-ext eq!} -- TVarE (var-ext-behind x)
-  -}
-  ext-behind {n} {Δ} {Γ} {.(Pi _ _)} {.(Abs _)} (TPiI{ok = ok} j) = TPiI{ok = type-ok-env-ext ok} (ext-behind j)
-  ext-behind {n} {Δ} {Γ} {.([ 0 ↦ _ ]ᵀ _)} {.(App _ _)} (TPiE j j₁ x) = TPiE (ext-behind j) (ext-behind j₁) (type-ok-env-ext x)
-  ext-behind {n} {Δ} {Γ} {.(Sigma _ _)} {.(Prod _ _)} (TSigmaI{ok = ok} j j₁) = TSigmaI{ok = type-ok-env-ext ok} (ext-behind j) (ext-behind j₁)
-  ext-behind {n} {Δ} {Γ} {T} {.(FakeLet _ _)} (TSigmaE{ok = ok}{ok' = ok'} j j₁) = TSigmaE{ok = type-ok-env-ext ok}{ok' = type-ok-env-ext ok'} (ext-behind j) (ext-behind j₁)
-  ext-behind {n} {Δ} {Γ} {.(Label _)} {.(LabI _)} (TLabI ins) = TLabI ins
-  ext-behind {n} {Δ} {Γ} {T} {.(LabE _ (LabI _))} (TLabEl{s = s}{f = f}{scopecheck = sc} j j₁) = TLabEl{scopecheck = sc'} (ext-behind j) (ext-behind j₁)
-    where sc' : (l : Fin n) (i : l ∈ s) (m : ℕ) → m ∈` f l i → m <ᴺ length (Δ ++ Γ)
-          sc' l i m ins
-            with sc l i m ins
-          ...  | w rewrite (length[A++B]≡length[A]+length[B]{n}{Δ}{Γ}) = a<b≤c⇒a<c w (m≤m+n (length Δ) (length Γ))
-  ext-behind {n} {Δ} {Γ} {T} {.(LabE _ (Var _))} (TLabEx f' j) = TLabEx (λ l i → ext-behind (f' l i)) (ext-behind j)
-
-  -}
-
-
-  {-
-  conv-nf : {n : ℕ} {e : Exp {n}} {T : Ty} → [] ⊢ e ∶ T → ∃[ T' ]( (Nf T') × ([] ⊢ T ≡ᵀ T'))
-  conv-nf {n} {e} {T} (TConv j x) = {!!}
-  conv-nf {n} {.(Abs _)} {.(Pi _ _)} (TPiI j) = {!!}
-  conv-nf {n} {.(App _ _)} {.([ 0 ↦ _ ]ᵀ _)} (TPiE j j₁ x) = {!!}
-  conv-nf {n} {.(Prod _ _)} {.(Sigma _ _)} (TSigmaI j j₁) = {!!}
-  conv-nf {n} {.(FakeLet _ _)} {T} (TSigmaE j j₁) = {!!}
-  conv-nf {n} {.(LabI _)} {.(Label _)} (TLabI ins) = {!!}
-  conv-nf {n} {.(LabE _ (LabI _))} {T} (TLabEl j j₁) = {!!}
-  conv-nf {n} {.(LabE _ (Var _))} {T} (TLabEx f' j) = {!!}
-  
-  -- no. x ∈ s, x ∈ s', s ≠ s'; [] ⊢ LabI x ∶ Label s, [] ⊢ LabI x ∶ Label s', yet ¬ ([] ⊢ Label s ≡ᵀ Label s')
-  type-eq : {n : ℕ} {T T' : Ty {n}} {e : Exp} → [] ⊢ e ∶ T → [] ⊢ e ∶ T' → [] ⊢ T ≡ᵀ T'
-  type-eq {n} {T} {T'} {e} j j' = {!!}
-  -- no. same as above.
-  type-endure : {n : ℕ} {T T' : Ty {n}} {e : Exp} → [] ⊢ e ∶ T → ¬ ([] ⊢ T ≡ᵀ T') → ¬ ([] ⊢ e ∶ T')
-  type-endure {n} {T} {T'} {e} j neq j' = contraposition type-eq (λ x → contradiction (x j') neq) j
-  -}
-
-
-
-{- "within"-ext not required
-
-
-  -- type to determine whether var type judgement in env. (Δ ++ Γ) is in Δ or Γ
-  data extract-env-or {n : ℕ} {Δ Γ : TEnv {n}} {T : Ty} {x : ℕ} : Set where
-    in-Δ : x ∶ T ∈ Δ → extract-env-or
-    -- x ≥ length Δ makes sure that x really is in Γ; e.g.
-    -- x = 1, Δ = (S ∷ T), Γ = (T ∷ Γ'); here 1 ∶ T ∈ Δ as well as (1 ∸ 2) ≡ 0 ∶ T ∈ Γ
-    in-Γ : (x ≥ᴺ length Δ) → (x ∸ length Δ) ∶ T ∈ Γ → extract-env-or
-
-  extract : {n : ℕ} {Δ Γ : TEnv {n}} {T : Ty} {x : ℕ} (j : x ∶ T ∈ (Δ ++ Γ)) → extract-env-or{n}{Δ}{Γ}{T}{x}
-  extract {n} {Δ} {Γ} {T} {x} j = {!!}
---  extract {n} {[]} {Γ} {T} {x} j = in-Γ z≤n j
---  extract {n} {x₁ ∷ Δ} {Γ} {.x₁} {.0} here = in-Δ here
---  extract {n} {x₁ ∷ Δ} {Γ} {T} {ℕ.suc x} (there j)
---    with extract {n} {Δ} {Γ} {T} {x} j
---  ...  | in-Δ j'  = in-Δ (there j')
---  ...  | in-Γ ge j'' = in-Γ (s≤s ge) j''
-
-
-  ext-front : {N n : ℕ} {Γ Δ : Env{N}} {S : Ty} → n ∶ S ∈ Γ → (n +ᴺ (length Δ)) ∶ S ∈ (Δ ++ Γ)
-  ext-front {N} {n} {Γ} {[]} {S} j
-    rewrite (n+length[]≡n{A = Ty {N}}{n = n})
-          = j
-  ext-front {N} {n} {Γ} {T ∷ Δ} {S} j
-    rewrite (+-suc n (foldr (λ _ → ℕ.suc) 0 Δ))
-          = there (ext-front j)
-
-  swap-env-behind : {n : ℕ} {Γ Δ : Env {n}} {T : Ty} → 0 ∶ T ∈ (T ∷ Γ) → 0 ∶ T ∈ (T ∷ Δ)
-  swap-env-behind {n}{Γ} {Δ} {T} j = here
-
-  swap-type : {n : ℕ} {Δ ∇ Γ : Env {n}} {T : Ty} → (length Δ) ∶ T ∈ (Δ ++ T ∷ ∇ ++ Γ) → (length Δ +ᴺ length ∇) ∶ T ∈ (Δ ++ ∇ ++ T ∷ Γ)
-  swap-type {n} {Δ} {∇} {Γ} {T} j
-    with extract{n}{Δ}{T ∷ ∇ ++ Γ} j
-  ...  | in-Δ x = contradiction (var-env-< {n}{Δ} {T} x) (<-irrefl refl)
-  ...  | in-Γ le j'
-       with extract{n}{T ∷ ∇}{Γ} j'
-  ...     | in-Δ j''
-          rewrite (n∸n≡0 (length Δ))
-                | (sym (length[A++B]≡length[A]+length[B]{lzero}{Ty}{Δ}{∇}))
-                | (sym (++-assoc{lzero}{Ty}{Δ}{∇}{T ∷ Γ}))
-                = ext-front{n}{0}{T ∷ Γ}{Δ ++ ∇}{T} (swap-env-behind{n}{∇}{Γ}{T} j'')
-  ...     | in-Γ le' j''
-          rewrite (length[A∷B]≡suc[length[B]]{lzero}{Ty}{T}{∇})
-                | (n∸n≡0 (length Δ))
-                = contradiction le' (<⇒≱ (s≤s z≤n))
-
-  env-pred : {n : ℕ} {Γ : Env {n}} {S T : Ty} {y : ℕ} {gt : y ≢ 0} → y ∶ T ∈ (S ∷ Γ) → ∣ y ⊖ 1 ∣ ∶ T ∈ Γ
-  env-pred {n} {Γ} {S} {.S} {.0} {gt} here = contradiction refl gt
-  env-pred {n} {Γ} {S} {T} {.(ℕ.suc _)} {gt} (there j) = j
-
-  env-type-equiv-here : {n : ℕ} {Γ : Env {n}} {S T : Ty} → 0 ∶ T ∈ (S ∷ Γ) → T ≡ S
-  env-type-equiv-here {n} {Γ} {S} {.S} here = refl
-
-  env-type-uniq : {N n : ℕ} {Γ : Env {N}} {S T : Ty} → n ∶ T ∈ Γ → n ∶ S ∈ Γ → T ≡ S
-  env-type-uniq {N} {.0} {.(S ∷ _)} {S} {.S} here here = refl
-  env-type-uniq {N} {(ℕ.suc n)} {(A ∷ Γ)} {S} {T} (there j) (there j') = env-type-uniq {N} {n} {Γ} {S} {T} j j' 
-
-  env-type-equiv : {n : ℕ} {Δ ∇ : Env {n}} {S T : Ty} → length Δ ∶ T ∈ (Δ ++ S ∷ ∇) → T ≡ S
-  env-type-equiv {n} {Δ} {∇} {S} {T} j
-    with extract{n}{Δ}{S ∷ ∇} j
-  ...  | in-Δ x = contradiction (var-env-< x) (≤⇒≯ ≤-refl) 
-  ...  | in-Γ x j'
-       rewrite (n∸n≡0 (length Δ))
-             = env-type-equiv-here {n} {∇} {S} {T} j'
-
-  env-type-equiv-j : {N : ℕ} {Γ : Env {N}} {S T : Ty} {n : ℕ} → T ≡ S → n ∶ T ∈ Γ → n ∶ S ∈ Γ
-  env-type-equiv-j {N} {Γ} {S} {T} {n} eq j
-    rewrite eq
-          = j
-
-  -- extension of environment
-
-  -- lemma required for ∈`
-  ext-∈` : {N m k q : ℕ} {e : Exp {N}} → (∀ n → n ∈` e → n <ᴺ m) → (∀ n → n ∈` ↑ + k , q [ e ] → n <ᴺ m +ᴺ k)
-  ext-∈` {N} {m} {k} {q} {Var x} f n ins
-    with x <ᴺ? q
-  ...  | yes p = ≤-trans (f n ins) (≤-stepsʳ{m}{m} k ≤-refl)
-  ext-∈` {N} {m} {k} {q} {Var x} f .(x +ᴺ k) in-Var | no ¬p = Data.Nat.Properties.+-monoˡ-≤ k (f x in-Var)
-  ext-∈` {N} {m} {k} {q} {Abs e} f n (in-Abs ins) = ≤-pred (ext-∈` {N} {ℕ.suc m} {k} {ℕ.suc q} {e = e} (extr f) (ℕ.suc n) ins)
-    where extr : (∀ n → n ∈` Abs e → n <ᴺ m) → (∀ n → n ∈` e → n <ᴺ ℕ.suc m)
-          extr f zero ins = s≤s z≤n
-          extr f (ℕ.suc n) ins = s≤s (f n (in-Abs ins))
-  ext-∈` {N} {m} {k} {q} {App e e₁} f n (in-App (inj₁ x)) = ext-∈`{N}{m}{k}{q}{e} (extr f) n x
-    where extr : (∀ n → n ∈` App e e₁ → n <ᴺ m) → (∀ n → n ∈` e → n <ᴺ m)
-          extr f n ins = f n (in-App (inj₁ ins))
-  ext-∈` {N} {m} {k} {q} {App e e₁} f n (in-App (inj₂ y)) = ext-∈`{N}{m}{k}{q}{e₁} (extr f) n y
-    where extr : (∀ n → n ∈` App e e₁ → n <ᴺ m) → (∀ n → n ∈` e₁ → n <ᴺ m)
-          extr f n ins = f n (in-App (inj₂ ins))
-  ext-∈` {N} {m} {k} {q} {LabE f₁ e} f n (in-LabE (inj₁ (fst , fst₁ , snd))) = ext-∈`{N}{m}{k}{q}{f₁ fst fst₁} (extr f) n snd
-    where extr : (∀ n → n ∈` LabE f₁ e → n <ᴺ m) → (∀ n → n ∈` f₁ fst fst₁ → n <ᴺ m)
-          extr f n ins = f n (in-LabE (inj₁ (fst , (fst₁ , ins))))
-  ext-∈` {N} {m} {k} {q} {LabE f₁ e} f n (in-LabE (inj₂ y)) = ext-∈`{N}{m}{k}{q}{e} (extr f) n y
-    where extr : (∀ n → n ∈` LabE f₁ e → n <ᴺ m) → (∀ n → n ∈` e → n <ᴺ m)
-          extr f n ins = f n (in-LabE (inj₂ ins))
-
-  ext : {N : ℕ} {Γ Δ ∇ : Env {N}} {S : Ty} {s : Exp} → (∇ ++ Γ) ⊢ s ∶ S → (∇ ++ Δ ++ Γ) ⊢ ↑ (ℤ.pos (length Δ)) , length ∇ [ s ] ∶ S
-  ext {N} {Γ} {Δ} {∇} (TVar {m = n} x)
-    with extract{N}{∇}{Γ} x
-  ... | in-Δ x₁
-      with n <ᴺ? length ∇
-  ...    | yes p = TVar (ext-behind x₁)
-  ...    | no ¬p = contradiction (var-env-< x₁) ¬p
-  ext {N} {Γ} {Δ} {∇} (TVar {m = n} x)
-      | in-Γ x₁ x₂
-      with n <ᴺ? length ∇
-  ...    | yes p = contradiction x₁ (<⇒≱ p)
-  ...    | no ¬p
-         with (ext-front{N}{n ∸ length ∇}{Γ}{∇ ++ Δ} x₂)
-  ...       | w
-            rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{Δ})
-                  | (sym (+-assoc (n ∸ length ∇) (length ∇) (length Δ)))
-                  | (m∸n+n≡m{n}{length ∇} (≮⇒≥ ¬p))
-                  | (++-assoc{lzero}{Ty}{∇}{Δ}{Γ})
-                  = TVar w 
-  ext {N} {Γ} {Δ} {∇} {Fun T₁ T₂} {Abs e} (TAbs j) = TAbs (ext{N}{Γ}{Δ}{T₁ ∷ ∇} j)
-  ext {N} {Γ} {Δ} {∇} {S} {App s₁ s₂} (TApp{T₁ = T₁} j₁ j₂) = TApp (ext{N}{Γ}{Δ}{∇}{Fun T₁ S} j₁) (ext{N}{Γ}{Δ}{∇}{T₁} j₂)
-  ext {N} {Γ} {Δ} {∇} {S} {LabI l} (TLabI{x = x}{s} ins) = TLabI{x = x}{s} ins
-  ext {N} {Γ} {Δ} {∇} {S} {LabE f e} (TLabEl{ins = ins}{f = .f}{scopecheck = s} j j') = TLabEl{ins = ins}
-                                                                                              {scopecheck = λ l i n x₁ → rw n (ext-∈`{N}{length (∇ ++ Γ)}{length Δ}{length ∇}{f l i} (s l i) n x₁)}
-                                                                                              (ext{N}{Γ}{Δ}{∇} j) (ext{N}{Γ}{Δ}{∇} j')
-    where rw : ∀ n → n <ᴺ length (∇ ++ Γ) +ᴺ length Δ → n <ᴺ length (∇ ++ Δ ++ Γ)
-          rw n a rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{Γ})
-                       | (+-assoc (length ∇) (length Γ) (length Δ))
-                       | (+-comm (length Γ) (length Δ))
-                       | sym (length[A++B]≡length[A]+length[B]{lzero}{Ty}{Δ}{Γ})
-                       | sym (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{Δ ++ Γ}) = a
-  ext {N} {Γ} {[]} {∇} {S} {LabE f .(Var m)} (TLabEx {s = s} {f = .f} f' (TVar {m = m} x))
-    rewrite (↑ᴺ⁰-refl{N}{length ∇}{m})
-          | (f-ext (λ l → f-ext (λ i → ↑⁰-refl{N}{length ∇}{f l i})))
-          = TLabEx f' (TVar x)
-  -- required lemma needs length Δ > 0, hence the case split
-  ext {N} {Γ} {t ∷ Δ} {∇} {S} {LabE f .(Var m)} (TLabEx {s = s} {f = .f} f' (TVar {m = m} x))
-    with extract{N}{∇}{Γ} x
-  ...  | in-Δ x₁
-       with m <ᴺ? length ∇
-  ...     | no ¬p = contradiction (var-env-< x₁) ¬p
-  ...     | yes p
-          with (λ l i → ext{N}{Γ}{t ∷ Δ}{∇} (f' l i))
-  ...        | w = TLabEx (rw w) (TVar (ext-behind x₁)) -- if m < k, [ m → ↑ₖ x ] (↑ₖ s) ≡ ↑ₖ ([ m ↦ x ] s)
- 
-          where rw : ((l : Fin N) → (i : l ∈ s) → (∇ ++ (t ∷ Δ) ++ Γ) ⊢ ↑ + length (t ∷ Δ) , length ∇ [ [ m ↦ LabI l ] (f l i) ] ∶ S)
-                   → ((l : Fin N) → (i : l ∈ s) → (∇ ++ (t ∷ Δ) ++ Γ) ⊢ [ m ↦ LabI l ] ↑ + length (t ∷ Δ) , length ∇ [ f l i ] ∶ S)
-                rw q l i
-                  with q l i              
-                ...  | w
-                     rewrite (subst-shift-swap{N}{+ length (t ∷ Δ)}{m}{length ∇}{f l i}{LabI l} (+<+ (s≤s z≤n)))
-                     with m <ᴺ? length ∇
-                ...     | yes p = w 
-                ...     | no ¬p = contradiction p ¬p
-  ext {N} {Γ} {t ∷ Δ} {∇} {S} {LabE f .(Var _)} (TLabEx {s = s}{f = .f} f' (TVar{m = m} x))
-       | in-Γ x₁ x₂
-       with m <ᴺ? length ∇
-  ...     | yes p = contradiction x₁ (<⇒≱ p)
-  ...     | no ¬p
-          with (λ l i → (ext{N}{Γ}{t ∷ Δ}{∇} (f' l i))) | (ext-front{N}{m ∸ length ∇}{Γ}{∇ ++ (t ∷ Δ)} x₂)
-  ...        | w | w'
-             rewrite (length[A++B]≡length[A]+length[B]{lzero}{Ty}{∇}{t ∷ Δ})
-                   | (sym (+-assoc (m ∸ length ∇) (length ∇) (length (t ∷ Δ))))
-                   | (m∸n+n≡m{m}{length ∇} (≮⇒≥ ¬p))
-                   | (++-assoc{lzero}{Ty}{∇}{t ∷ Δ}{Γ})
-                  = TLabEx (rw w) (TVar w')
-                  
-             where rw : ((l : Fin N) → (i : l ∈ s) → ((∇ ++ (t ∷ Δ) ++ Γ) ⊢ ↑ + length (t ∷ Δ) , length ∇ [ [ m ↦ LabI l ] f l i ] ∶ S))
-                      → ((l : Fin N) → (i : l ∈ s) → ((∇ ++ (t ∷ Δ) ++ Γ) ⊢ [ m +ᴺ length (t ∷ Δ) ↦ LabI l ] ↑ + length (t ∷ Δ) , length ∇ [ f l i ] ∶ S))
-                   rw q l i
-                     with q l i
-                   ...  | w
-                        rewrite (subst-shift-swap {N} {+ length (t ∷ Δ)} {m} {length ∇} {f l i} {LabI l} (+<+ (s≤s z≤n)))
-                        with m <ᴺ? length ∇
-                   ...     | yes p = contradiction x₁ (<⇒≱ p)
-                   ...     | no ¬p =  w 
-
-  
-  ext-empty : {N : ℕ} {Γ : Env {N}} {T : Ty} {e : Exp} → [] ⊢ e ∶ T → Γ ⊢ e ∶ T
-  ext-empty {N} {Γ} {T} {e} j
-    with ext{N}{[]}{Γ}{[]} j
-  ...  | w rewrite (closed-no-shift{N}{+ length Γ}{0}{e}{T} j)
-                 | (A++[]≡A{lzero}{Ty}{Γ})
-                 = w
--}
-
-{-
-  {-
-  ≡ᵀ⇒⊢ : {n : ℕ} {A B : Ty{n}} → [] ⊢ A ≡ᵀ B → [] ⊢ A × [] ⊢ B
-  ≡ᵀ⇒⊢ {n} {A} {.A} (CRefl{ok = ok}) = ok , ok
-  ≡ᵀ⇒⊢ {n} {A} {B} (CSym j) = {!!}
-  ≡ᵀ⇒⊢ {n} {A} {B} (CTrans j j₁) = {!!}
-  ≡ᵀ⇒⊢ {n} {A} {.(Case (λ l i → A) (LabI _))} (CLabEta x x₁) = x₁ , (TCaseF (λ l i → x₁) VLab x)
-  ≡ᵀ⇒⊢ {n} {.(Case _ (LabI _))} {.(_ _ ins)} (CLabBeta x ins) = x , {!!}
-  ≡ᵀ⇒⊢ {n} {.(Pi _ _)} {.(Pi _ _)} (CPi j j₁) = {!!}
-  ≡ᵀ⇒⊢ {n} {.(Sigma _ _)} {.(Sigma _ _)} (CSigma j j₁) = {!!}
-  ≡ᵀ⇒⊢ {n} {.(Case _ _)} {.(Case _ _)} (CLab v x) = {!!} -- apply lemma on x
-
-  ≢ᵀ-trans : {n : ℕ} {A B C : Ty {n}} → [] ⊢ A ≡ᵀ B → ¬ ([] ⊢ B ≡ᵀ C) → ¬ ([] ⊢ A ≡ᵀ C)
-  ≢ᵀ-trans {n} {A} {B} {C} j not l = contradiction (CTrans (CSym j) l) not
-
-
-  
-  conv-nf : {n : ℕ} {T : Ty {n}} → [] ⊢ T → ∃[ T' ]( (Nf T') × ([] ⊢ T ≡ᵀ T'))
-  conv-nf {n} {(Label s)} TLabF = Label s , NLab , CRefl
-  conv-nf {n} {(Pi A B)} (TPiF q q₁) = (Pi A B) , (NPi , CRefl)
-  conv-nf {n} {(Sigma A B)} (TSigmaF q q₁) = (Sigma A B) , (NSigma , CRefl)
-  conv-nf {n} {(Case f e)} (TCaseF f' v x)
-    with canonical-forms-lab {n} {e = e} x v
-  ... | fst , fst₁ , snd
-        with conv-nf (f' fst snd)
-  ...      | fst' , fst₁' , snd' rewrite fst₁ = fst' , (fst₁' , (CTrans (CLabBeta (TCaseF f' v x) snd) snd'))
-
-
-  nf-uniq' : {n : ℕ} {A B : Ty {n}} → Nf A → Nf B → ([] ⊢ A ≡ᵀ B) → A ≡ B
-  nf-uniq' {n} {A} {.A} nf nf' CRefl = refl
-  nf-uniq' {n} {A} {B} nf nf' (CSym eq) = sym (nf-uniq' nf' nf eq)
-  nf-uniq' {n} {A} {B} nf nf' (CTrans{T' = T'} eq eq₁) = {!!}   -- conv-nf => req. transitivity
-  nf-uniq' {n} {.(Pi _ _)} {.(Pi _ _)} NPi NPi (CPi eq eq₁) = {!!}
-  nf-uniq' {n} {.(Sigma _ _)} {.(Sigma _ _)} nf nf' (CSigma eq eq₁) = {!!}
-
-  nf-uniqueness : {n : ℕ} {A : Ty {n}} → Nf A → (∀ B → A ≢ B → Nf B → ¬ ([] ⊢ A ≡ᵀ B))
-  nf-uniqueness {n} {Label x} nf (Label x₁) neq nfb' eq = {!!}
-  nf-uniqueness {n} {Label x} nf (Pi B B₁) neq nfb' eq = {!!}
-  nf-uniqueness {n} {Label x} nf (Sigma B B₁) neq nfb' eq = {!!}
-  nf-uniqueness {n} {Pi A A₁} nf B neq nfb' eq = {!!}
-  nf-uniqueness {n} {Sigma A A₁} nf B neq nfb' eq = {!!}
-
-  nf-uniqueness-alt : {n : ℕ} {A : Ty {n}} → Nf A → (∀ B → (¬ (Nf B) ⊎ ¬ (B ≢ A) ⊎ ¬ ([] ⊢ A ≡ᵀ B)))
-  nf-uniqueness-alt {n} {A} nf B = {!nf-uniqueness nf B!}
-
-  nf-uniqueness : {n : ℕ} {A : Ty {n}} → Nf A → (∄[ B ](Nf B × B ≢ A × [] ⊢ A ≡ᵀ B))
-  nf-uniqueness {n} {Label x} nf (Label x₁ , fst₁ , fst₂ , snd) = {!!}
-  nf-uniqueness {n} {Label x} nf (Pi fst fst₃ , fst₁ , fst₂ , snd) = {!!}
-  nf-uniqueness {n} {Label x} nf (Sigma fst fst₃ , fst₁ , fst₂ , snd) = {!!}
-  nf-uniqueness {n} {Pi A A₁} nf (fst , fst₁ , fst₂ , snd) = {!!}
-  nf-uniqueness {n} {Sigma A A₁} nf (fst , fst₁ , fst₂ , snd) = {!!}
-
-  nf-uniqueness-alt {n} {Label x₁} nf (Label x) = {!!}
---    with 
-  nf-uniqueness-alt {n} {Pi A A₁} nf (Label x) = inj₂ {!inj₁!}
-  nf-uniqueness-alt {n} {Sigma A A₁} nf (Label x) = {!!}
-  nf-uniqueness-alt {n} {A} nf (Pi B B₁) = {!!}
-  nf-uniqueness-alt {n} {A} nf (Sigma B B₁) = {!!}
-  nf-uniqueness-alt {n} {A} nf (Case f x) = inj₁ (λ ())
-
-  postulate -- law of the excluded middle
-    not-ineq : {a : Set} {A B : a} → ¬ (A ≢ B) → A ≡ B
-
-  case-nf-uniqueness : {n : ℕ} {s : Subset n} {B : Ty {n}} {f : ∀ l → l ∈ s → Ty {n}} {e : Exp {n}} → [] ⊢ Case f e ≡ᵀ B × Nf B → (∀ B' → B ≢ B' → Nf B' → ¬ ([] ⊢ Case f e ≡ᵀ B'))
-  case-nf-uniqueness {n} {s} {B} {f} {e} (fst , snd) B' neq nfb' eq = nf-uniqueness snd B' neq nfb' (CTrans (CSym fst) eq)
-
-  case-nf' : {n : ℕ} {s : Subset n} {B : Ty {n}} {f : ∀ l → l ∈ s → Ty {n}} {l : Fin n} {ins : l ∈ s} → [] ⊢ Case f (LabI l) ≡ᵀ B × Nf B → f l ins ≡ B
-  case-nf' {n} {s} {B} {f} {l} {ins} (j , nf)
-    with f l ins
-  ...  | B' = {!!}
-    with nf-uniqueness-alt snd B'
-  ... | inj₁ x = contradiction nfb' x
-  ... | inj₂ (inj₁ x) = contradiction (sym (not-ineq x)) neq
-  ... | inj₂ (inj₂ y) = contradiction (CTrans (CSym fst) eq) y -}
-
-  nf-eq : {n : ℕ} {A B : Ty{n}} (a : [] ⊢ A) (b : [] ⊢ B) → [] ⊢ A ≡ᵀ B → proj₁ (conv-nf a) ≡ proj₁ (conv-nf b)
-  nf-eq {n} {A} {.A} a b CRefl = {!!}
-  nf-eq {n} {A} {B} a b (CSym eq) = sym (nf-eq b a eq)
-  nf-eq {n} {A} {B} a b (CTrans eq eq₁) = ≡-trans {!nf-eq !} {!!}
-  nf-eq {n} {A} {.(Case (λ l i → A) (LabI _))} a b (CLabEta x x₁) = {!!}
-  nf-eq {n} {.(Case _ (LabI _))} {.(_ _ ins)} a b (CLabBeta x ins) = {!!}
-  nf-eq {n} {.(Pi _ _)} {.(Pi _ _)} a b (CPi eq eq₁) = {!!}
-  nf-eq {n} {.(Sigma _ _)} {.(Sigma _ _)} a b (CSigma eq eq₁) = {!!}
-  nf-eq {n} {.(Case _ _)} {.(Case _ _)} a b (CLab v x) = {!!}
- 
-  
-  Pi≢ᵀLab {n} {A} {B} {s} (CSym j) = Lab≢ᵀPi j
-  Pi≢ᵀLab {n} {A} {B} {s} (CTrans {T' = Label x} j j₁) = Pi≢ᵀLab j
-  Pi≢ᵀLab {n} {A} {B} {s} (CTrans {T' = Pi T' T''} j j₁) = Pi≢ᵀLab j₁
-  Pi≢ᵀLab {n} {A} {B} {s} (CTrans {T' = Sigma T' T''} j j₁) = contradiction j {!!}
-  Pi≢ᵀLab {n} {A} {B} {s} (CTrans {T' = Case f e} j j₁) = contradiction (CSym j) (case-nf-uniqueness (j₁ , NLab) (Pi A B) (λ ()) NPi)
-
-{-    requires CTrans for contradiction
-    with (≡ᵀ⇒⊢ j)
-  ...  | w
-       with conv-nf {n} {Case f x} (proj₂ w)
-  ...     | Label x' , fst , snd = {!!}
-  ...     | Pi fst fst₁ , fst' , snd' = {!!}
-  ...     | Sigma fst fst₁ , fst' , snd' = {!!}
--}
-
-
-  -- conv-nf : {n : ℕ} {T : Ty {n}} → [] ⊢ T → ∃[ T' ]( (Nf T') × ([] ⊢ T ≡ᵀ T'))
-  Lab≢ᵀPi {n} {A} {B} {s} (CSym j) = Pi≢ᵀLab j
-
-  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = T'} j j₁)
-    with (≡ᵀ⇒⊢ j)
-  ...  | w
-       with conv-nf {n} {T'} (proj₂ w)
-  ...     | Label x , fst , snd = {!!} -- contradiction (CTrans (CSym j₁) (CSym j)) Pi≢ᵀLab
-  ...     | Pi fst fst₁ , fst' , snd' = {!!}
-  ...     | Sigma fst fst₁ , fst' , snd' = {!!}
-
-  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Label x} j j₁) = Lab≢ᵀPi j₁
-  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Pi T' T''} j j₁) = Lab≢ᵀPi j
-  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Sigma T' T''} j j₁) = contradiction j {!!}
-  Lab≢ᵀPi {n} {A} {B} {s} (CTrans {T' = Case f x} j j') = contradiction (CSym j) (case-nf-uniqueness (j' , NPi) (Label s) (λ ()) NLab)
-{-
-    with (≡ᵀ⇒⊢ j)
-  ... | w
-      with conv-nf {n} {Case f x} (proj₂ w)
-  ...    | w' = {!!}
--}
-  
-
-  subset-eq {n} {s} {.s} CRefl = refl
-  subset-eq {n} {s} {s'} (CSym j) = sym (subset-eq j)
-  subset-eq {n} {s} {s'} (CTrans {T' = T'} j j')
-    with (proj₂ (≡ᵀ⇒⊢ j))
-  ... | k
-      with conv-nf k
-  ...    | Label x , fst₁ , snd = ≡-trans {!CTRans !} {!!}
-  ...    | Pi fst fst₂ , fst₁ , snd = contradiction (CTrans j snd) Lab≢ᵀPi 
-  ...    | Sigma fst fst₂ , fst₁ , snd = contradiction (CTrans j snd) {!!}
-
-
-  subset-eq {n} {s} {s'} (CTrans {T' = Label x} j j') = ≡-trans (subset-eq j) (subset-eq j')
-  subset-eq {n} {s} {s'} (CTrans {T' = Pi T' T''} j j') = contradiction j Lab≢ᵀPi
-  subset-eq {n} {s} {s'} (CTrans {T' = Sigma T' T''} j j') = {!contradiction j  Lab≢ᵀSigma!}
-  subset-eq {n} {s} {s'} (CTrans {T' = Case f x} (CSym j) j') = {!!}
-  subset-eq {n} {s} {s'} (CTrans {T' = Case f x} (CTrans j j₁) j') = {!!}
-  subset-eq {n} {s} {s'} (CTrans {T' = Case .(λ l i → Label s) .(LabI _)} (CLabEta x x₁) (CSym j')) = {!!}
-  subset-eq {n} {s} {s'} (CTrans {T' = Case .(λ l i → Label s) .(LabI _)} (CLabEta x x₁) (CTrans j' j'')) = {!!}
-  subset-eq {n} {s} {.s} (CTrans {T' = Case .(λ l i → Label s) .(LabI _)} (CLabEta x x₁) (CLabBeta x₂ ins)) = refl
-
-
-  subset-eq {n} {s} {s'} (CTrans CRefl j₁) = subset-eq j₁
-  subset-eq {n} {s} {s'} (CTrans (CSym j) j₁) = {!!}
-  subset-eq {n} {s} {s'} (CTrans (CTrans j j₂) j₁) = {!!}
-  subset-eq {n} {s} {s'} (CTrans j (CSym j₁)) = {!!}
-  subset-eq {n} {s} {s'} (CTrans j (CTrans j₁ j₂)) = {!!}
-  subset-eq {n} {s} {.s} (CTrans (CLabEta x x₁) (CLabBeta x₂ ins)) = refl
-
-  subset-eq : {n : ℕ} {s s' : Subset n} → [] ⊢ Label s ≡ᵀ Label s' → Label s ≡ Label s'
-  subset-eq {n} {s} {s'} j
-    with (nf-uniqueness-alt {n} {Label s} NLab (Label s'))
-  ... | inj₁ x = contradiction NLab x
-  ... | inj₂ (inj₁ x) = sym (not-ineq x) -- ¬ (¬ a) = a
-  ... | inj₂ (inj₂ y) = contradiction j y
--}
 
