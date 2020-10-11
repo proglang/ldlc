@@ -46,7 +46,7 @@ module defs where
     VVar : {n : ℕ} → Val (Var n)
     VLab : {x : Fin n} → Val (LabI x)
     VFun : {e : Exp} → Val (Abs e)
-    VProd : {e e' : Exp} → Val (Prod e e')
+    VProd : {e e' : Exp} → Val e → Val e' → Val (Prod e e')
 
   data Ty {n : ℕ} : Set where
     Label : Subset n → Ty
@@ -121,7 +121,7 @@ module defs where
   data TEnv {n} where
     [] : TEnv
     ⟨_,_⟩ : (T : Ty) (Γ : TEnv {n}) {ok : Γ ⊢ T} → TEnv
-
+  
   length : {n : ℕ} → TEnv {n} → ℕ
   length [] = 0
   length ⟨ T , Γ ⟩ = ℕ.suc (length Γ)
@@ -197,15 +197,17 @@ module defs where
   -- Type conversion without explicit transitivity and symmetry
   data _⊢_≡ᵀ'_ {n} where
     CRefl' : {Γ : TEnv {n}} {T : Ty} {ok : Γ ⊢ T}  → Γ ⊢ T ≡ᵀ' T
-    CLabEta' : {Γ : TEnv {n}} {s : Subset n} {x : Fin n} {T : Ty} {ins : x ∈ s} {f : (∀ l → l ∈ s → Ty)} → Γ ⊢ LabI x ∶ Label s → (∀ l → (ins' : l ∈ s) → Γ ⊢ f l ins') → (Γ ⊢ f x ins  ≡ᵀ' T) →  Γ ⊢ T ≡ᵀ' (Case {s = s} f (LabI x))
-    CLabBeta' : {Γ : TEnv {n}} {s : Subset n} {x : Fin n} {f : (∀ l → l ∈ s → Ty)} {T : Ty {n}} → Γ ⊢ Case f (LabI x) → (ins : x ∈ s) → (Γ ⊢ f x ins ≡ᵀ' T) → Γ ⊢ Case f (LabI x) ≡ᵀ' T
+    CLabEta' : {Γ : TEnv {n}} {s : Subset n} {x : Fin n} {T : Ty} {ins : x ∈ s} {f : (∀ l → l ∈ s → Ty)}
+               → Γ ⊢ LabI x ∶ Label s → (∀ l → (ins' : l ∈ s) → Γ ⊢ f l ins')
+               → (Γ ⊢ f x ins  ≡ᵀ' T)
+               →  Γ ⊢ T ≡ᵀ' (Case {s = s} f (LabI x))
+    CLabBeta' : {Γ : TEnv {n}} {s : Subset n} {x : Fin n} {f : (∀ l → l ∈ s → Ty)} {T : Ty {n}}
+                → Γ ⊢ Case f (LabI x) → (ins : x ∈ s) → (Γ ⊢ f x ins ≡ᵀ' T) → Γ ⊢ Case f (LabI x) ≡ᵀ' T
     CPi' : {Γ : TEnv {n}} {A B A' B' : Ty} {ok : Γ ⊢ A} → Γ ⊢ A ≡ᵀ' B → (⟨ A , Γ ⟩ {ok} ⊢ A' ≡ᵀ' B')→ Γ ⊢ Pi A A' ≡ᵀ' Pi B B'
     CSigma' : {Γ : TEnv {n}} {A B A' B' : Ty} {ok : Γ ⊢ A} → Γ ⊢ A ≡ᵀ' B → ⟨ A , Γ ⟩ {ok} ⊢ A' ≡ᵀ' B' → Γ ⊢ Sigma A A' ≡ᵀ' Sigma B B'
     CLab' : {Γ : TEnv {n}} {s : Subset n} {f f' : (∀ l → l ∈ s → Ty)} {e : Exp {n}}  {ok : ∀ l' → (i : l' ∈ s) → Γ ⊢ f l' i} {ok' : ∀ l' → (i : l' ∈ s) → Γ ⊢ f' l' i}
                                           → (Γ ⊢ Case f e) → (∀ l i → Γ ⊢ (f l i) ≡ᵀ' (f' l i)) → Γ ⊢ Case f e ≡ᵀ' Case f' e
-    CLabSub' : {Γ : TEnv {n}} {s : Subset n} {l : Fin n} {ins : l ∈ s} {f g : (∀ l → l ∈ s → Ty)} {ok : ∀ l' → (i : l' ∈ s) → Γ ⊢ f l' i} {ok' : ∀ l' → (i : l' ∈ s) → Γ ⊢ g l' i}
-               → (Γ ⊢ f l ins ≡ᵀ' g l ins) → Γ ⊢ Case f (LabI l) ≡ᵀ' Case g (LabI l)
-
+                     
   -- Type environment equivalency for ≡ᵀ
   data _≡ᵀ_ {n} : TEnv {n} → TEnv {n} → Set where
     tzero : [] ≡ᵀ []
@@ -267,7 +269,7 @@ module defs where
   val-uniqueness {n} {.(Var n₁)} (VVar {n = n₁}) (VVar {n = .n₁}) = refl
   val-uniqueness {n} {.(LabI x)} (VLab {x = x}) (VLab {x = .x}) = refl
   val-uniqueness {n} {.(Abs e)} (VFun {e = e}) (VFun {e = .e}) = refl
-  val-uniqueness {n} {.(Prod e e')} (VProd {e = e} {e' = e'}) (VProd {e = .e} {e' = .e'}) = refl
+  val-uniqueness {n} {.(Prod e e')} (VProd {e = e} {e' = e'} v v') (VProd {e = .e} {e' = .e'} v₁ v₁') = cong₂ VProd (val-uniqueness v v₁) (val-uniqueness v' v₁')
 
   ins-uniqueness : {n : ℕ} {s : Subset n} {l : Fin n} → (i i' : l ∈ s) → i ≡ i'
   ins-uniqueness {.(ℕ.suc _)} {.(true ∷ _)} {.zero} here here = refl
@@ -323,33 +325,13 @@ module defs where
   ≡ᵀ'-trans {n} {.(Case _ _)} {.(Case _ _)} {.(Case _ _)} {Γ} (CLab' {ok = ok}{ok' = ok'} v x) CRefl' = CLab'{ok = ok}{ok' = ok'} v x
   ≡ᵀ'-trans {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {C} {Γ} (CLab' {ok = ok} v x) (CLabBeta'{x = x₂} x₁ ins j') = CLabBeta' (TCaseF ok VLab (TLabI ins)) ins (≡ᵀ'-trans (x x₂ ins) j')
   ≡ᵀ'-trans {n} {.(Case _ _)} {.(Case _ _)} {.(Case _ _)} {Γ} (CLab'{ok = ok} v x) (CLab'{ok' = ok'} v₁ x₁) = CLab'{ok = ok}{ok' = ok'}  v (λ l i → ≡ᵀ'-trans (x l i) (x₁ l i))
-  ≡ᵀ'-trans {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} (CLab'{ok = ok} v x) (CLabSub'{l = l}{ins = ins}{ok' = ok'} x₁)
-    = CLabSub'{ok = ok}{ok' = ok'} (≡ᵀ'-trans (x l ins) x₁)
   ≡ᵀ'-trans {n} {(Case f e)} {(Case f' .e)} {(Case f'' (LabI l))} {Γ} (CLab'{ok = ok}{ok' = ok'} (TCaseF u v w) x) (CLabEta'{ins = ins} x₁ x₂ j')
     = CLabEta'{ins = ins} x₁ x₂ (≡ᵀ'-trans j' (CLab'{ok = ok'}{ok' = ok} (TCaseF ok' v w) λ l₁ i → ≡ᵀ'-sym (x l₁ i))) 
-  ≡ᵀ'-trans {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} (CLabSub'{ok = ok} {ok' = ok'} x) CRefl' = CLabSub'{ok = ok}{ok' = ok'} x
-  ≡ᵀ'-trans {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {C} {Γ} (CLabSub' {ins = ins'} {ok = ok} x) (CLabBeta' x₁ ins j')
-    rewrite (ins-uniqueness ins' ins)
-    with (≡ᵀ'-trans x j')
-  ...  | w
-       rewrite (ins-uniqueness ins ins') = CLabBeta' (TCaseF ok VLab (TLabI ins')) ins' w
-  ≡ᵀ'-trans {n} {(Case f (LabI l))} {(Case f' (LabI .l))} {(Case f'' (LabI .l))} {Γ} (CLabSub'{ins = ins}{ok = ok}{ok' = ok'} x) (CLab'{ok = ok''}{ok' = ok'''} v x₁)
-    = CLabSub'{ok = ok}{ok' = ok'''} (≡ᵀ'-trans x (x₁ l ins))
-  ≡ᵀ'-trans {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} (CLabSub'{ins = ins}{ok = ok}{ok' = ok'} x) (CLabSub'{ins = ins'}{ok = ok''}{ok' = ok'''} x')
-    rewrite (ins-uniqueness ins ins')
-          = CLabSub'{ins = ins'}{ok = ok}{ok' = ok'''} (≡ᵀ'-trans x x')
-  ≡ᵀ'-trans {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} (CLabSub'{ok = ok}{ok' = ok'} x) (CLabEta' x₁ x₂ j')
-    = CLabEta' x₁ x₂ (≡ᵀ'-trans j' (CLabSub'{ok = ok'}{ok' = ok} (≡ᵀ'-sym x)))
   ≡ᵀ'-trans {n} {A} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} (CLabEta' x x₁ x₂) CRefl' = CLabEta' x x₁ x₂
   ≡ᵀ'-trans {n} {A} {.(Case _ (LabI _))} {C} {Γ} (CLabEta' {ins = ins'} x x₁ x₂) (CLabBeta' x₃ ins j')
     rewrite (ins-uniqueness ins ins')
           =  ≡ᵀ'-trans (≡ᵀ'-sym x₂) j'
   ≡ᵀ'-trans {n} {A} {(Case f (LabI l))} {(Case f' (LabI .l))} {Γ} (CLabEta'{ins = ins} x x₁ x₂) (CLab'{ok' = ok'} v x₃) = CLabEta'{ins = ins} x ok' (≡ᵀ'-trans (≡ᵀ'-sym (x₃ l ins)) x₂)
-  ≡ᵀ'-trans {n} {A} {(Case f (LabI l))} {(Case f' (LabI .l))} {Γ} (CLabEta'{ins = ins} x x₁ x₂) (CLabSub'{ins = ins'}{ok' = ok'} j')
-    rewrite (ins-uniqueness ins ins')
-    with (≡ᵀ'-trans (≡ᵀ'-sym j') x₂)
-  ...  | w
-       rewrite (ins-uniqueness ins' ins) = CLabEta'{ins = ins} x ok' w
   ≡ᵀ'-trans {n} {A} {(Case f (LabI l))} {(Case f' (LabI l'))} {Γ} (CLabEta'{ins = ins} x x₁ x₂) (CLabEta'{ins = ins'} x₃ x₄ j')
     =  CLabEta'{ins = ins'} x₃ x₄ (≡ᵀ'-trans j' (≡ᵀ'-trans (CLabBeta' (TCaseF x₁ VLab x) ins (CRefl'{ok = x₁ l ins})) x₂))
 
@@ -359,7 +341,6 @@ module defs where
   ≡ᵀ'-sym {n} {.(Pi _ _)} {.(Pi _ _)} {Γ} (CPi'{ok = ok} j j₁) = CPi'{ok = ⊢∧≡ᵀ'⇒⊢ ok j} (≡ᵀ'-sym j) (⊢≡ᵀ-envsub' (≡ᵀ'-sym j₁) (tsuc ≡ᵀ'-refl j)) 
   ≡ᵀ'-sym {n} {.(Sigma _ _)} {.(Sigma _ _)} {Γ} (CSigma'{ok = ok} j j₁) = CSigma'{ok = ⊢∧≡ᵀ'⇒⊢ ok j} (≡ᵀ'-sym j) (⊢≡ᵀ-envsub' (≡ᵀ'-sym j₁) (tsuc ≡ᵀ'-refl j))
   ≡ᵀ'-sym {n} {.(Case _ _)} {.(Case _ _)} {Γ} (CLab'{ok = ok}{ok' = ok'} (TCaseF u v w) x) = CLab'{ok = ok'}{ok' = ok} (TCaseF ok' v w) (λ l i → ≡ᵀ'-sym (x l i))
-  ≡ᵀ'-sym {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} (CLabSub'{ok = ok}{ok' = ok'} x) = CLabSub'{ok = ok'}{ok' = ok} (≡ᵀ'-sym x)
   ≡ᵀ'-sym {n} {A} {(Case f (LabI x'))} {Γ} (CLabEta'{ins = ins} x x₁ x₂) = CLabBeta' (TCaseF x₁ VLab x) ins x₂ -- CLabBeta' (TCaseF x₁ VLab x) ins refl 
 
   --- ⊢∧≡ᵀ'⇒⊢ ≡ᵀ'⇒⊢
@@ -369,7 +350,6 @@ module defs where
   ⊢∧≡ᵀ'⇒⊢ {n} {Γ} {.(Sigma _ _)} {.(Sigma _ _)} (TSigmaF j j₁) (CSigma'{ok = ok} eq eq₁) = TSigmaF (⊢∧≡ᵀ'⇒⊢ ok eq ) (⊢∧≡ᵀ'⇒⊢ (⊢-envsub' j₁ (tsuc ≡ᵀ'-refl eq)) (⊢≡ᵀ-envsub' eq₁ (tsuc ≡ᵀ'-refl eq)))
   ⊢∧≡ᵀ'⇒⊢ {n} {Γ} {(Case f (LabI l))} {T'} (TCaseF f' v x) (CLabBeta' x₁ ins eq) = ⊢∧≡ᵀ'⇒⊢ (f' l ins) eq 
   ⊢∧≡ᵀ'⇒⊢ {n} {Γ} {.(Case _ _)} {.(Case _ _)} (TCaseF f' v x) (CLab'{ok = ok}{ok' = ok'} z x₁) = TCaseF ok' v x
-  ⊢∧≡ᵀ'⇒⊢ {n} {Γ} {.(Case _ (LabI _))} {.(Case _ (LabI _))} (TCaseF f' v x) (CLabSub'{ok = ok}{ok' = ok'} eq) = TCaseF ok' v x
 
   ≡ᵀ'⇒⊢ {n} {Γ} {T} {.T} (CRefl'{ok = ok}) = ok , ok
   ≡ᵀ'⇒⊢ {n} {Γ} {T} {(Case f (LabI l))} (CLabEta'{ins = ins} x x₁ j) = ⊢∧≡ᵀ'⇒⊢ (x₁ l ins) j , TCaseF x₁ VLab x
@@ -377,13 +357,12 @@ module defs where
   ≡ᵀ'⇒⊢ {n} {Γ} {.(Pi _ _)} {.(Pi _ _)} (CPi'{ok = ok} j j₁) = TPiF ok (proj₁ (≡ᵀ'⇒⊢ j₁)) , TPiF (⊢∧≡ᵀ'⇒⊢ ok j) (⊢-envsub' (proj₂ (≡ᵀ'⇒⊢ j₁)) (tsuc ≡ᵀ'-refl j))
   ≡ᵀ'⇒⊢ {n} {Γ} {.(Sigma _ _)} {.(Sigma _ _)} (CSigma'{ok = ok} j j₁) = TSigmaF ok (proj₁ (≡ᵀ'⇒⊢ j₁)) , TSigmaF (⊢∧≡ᵀ'⇒⊢ ok j) (⊢-envsub' (proj₂ (≡ᵀ'⇒⊢ j₁)) (tsuc ≡ᵀ'-refl j))
   ≡ᵀ'⇒⊢ {n} {Γ} {.(Case _ _)} {.(Case _ _)} (CLab' {ok = ok} {ok' = ok'} (TCaseF f' v x₁) x) = TCaseF ok v x₁ , TCaseF ok' v x₁
-  ≡ᵀ'⇒⊢ {n} {Γ} {.(Case _ (LabI _))} {.(Case _ (LabI _))} (CLabSub'{ins = ins}{ok = ok}{ok' = ok'} j) = (TCaseF ok VLab (TLabI ins)) , TCaseF ok' VLab (TLabI ins)
 
   --- EQUIVALENCE ≡ᵀ & ≡ᵀ'
   ≡ᵀ⊆≡ᵀ' {n} {A} {.A} {Γ} (CRefl{ok = ok}) = CRefl'{ok = ok}
   ≡ᵀ⊆≡ᵀ' {n} {A} {B} {Γ} (CSym j) = ≡ᵀ'-sym (≡ᵀ⊆≡ᵀ' j)
   ≡ᵀ⊆≡ᵀ' {n} {A} {B} {Γ} (CTrans j j₁) = ≡ᵀ'-trans (≡ᵀ⊆≡ᵀ' j) (≡ᵀ⊆≡ᵀ' j₁)
-  ≡ᵀ⊆≡ᵀ' {n} {A} {.(Case (λ l i → A) (LabI _))} {Γ} (CLabEta{ins = ins} x x₁) = CLabEta' {ins = ins} x (λ l ins₁ → x₁) (CRefl'{ok = x₁}) -- CLabEta' x x₁
+  ≡ᵀ⊆≡ᵀ' {n} {A} {.(Case (λ l i → A) (LabI _))} {Γ} (CLabEta{ins = ins} x x₁) = CLabEta' {ins = ins} x (λ l ins₁ → x₁) (CRefl'{ok = x₁})
   ≡ᵀ⊆≡ᵀ' {n} {Case f (LabI l)} {.(f l ins)} {Γ} (CLabBeta (TCaseF f' v x) ins) = CLabBeta' (TCaseF f' v x) ins (CRefl' {ok = f' l ins})
   ≡ᵀ⊆≡ᵀ' {n} {.(Pi _ _)} {.(Pi _ _)} {Γ} (CPi j j₁) = CPi' (≡ᵀ⊆≡ᵀ' j) (≡ᵀ⊆≡ᵀ' j₁)
   ≡ᵀ⊆≡ᵀ' {n} {.(Sigma _ _)} {.(Sigma _ _)} {Γ} (CSigma j j₁) = CSigma' (≡ᵀ⊆≡ᵀ' j) (≡ᵀ⊆≡ᵀ' j₁)
@@ -391,14 +370,11 @@ module defs where
     = CLab'{ok = λ l' i → proj₁ (≡ᵀ'⇒⊢ (≡ᵀ⊆≡ᵀ' (x l' i)))}{ok' = λ l' i → proj₂ (≡ᵀ'⇒⊢ (≡ᵀ⊆≡ᵀ' (x l' i)))} v (λ l i → ≡ᵀ⊆≡ᵀ' (x l i))
 
   ≡ᵀ'⊆≡ᵀ {n} {A} {.A} {Γ} (CRefl'{ok = ok}) = CRefl{ok = ok}
-  ≡ᵀ'⊆≡ᵀ {n} {A} {(Case f (LabI l))} {Γ} (CLabEta'{ins = ins} x x₁ eq) = CSym (CTrans (CLabBeta (TCaseF x₁ VLab x) ins) (≡ᵀ'⊆≡ᵀ eq)) -- CSym (CLabBeta{f = f} (TCaseF x₁ VLab x) ins)
-  ≡ᵀ'⊆≡ᵀ {n} {(Case f (LabI l))} {B} {Γ} (CLabBeta' x ins eq) = CTrans (CLabBeta x ins) (≡ᵀ'⊆≡ᵀ eq) -- CLabBeta x ins -- CLabBeta x ins
+  ≡ᵀ'⊆≡ᵀ {n} {A} {(Case f (LabI l))} {Γ} (CLabEta'{ins = ins} x x₁ eq) = CSym (CTrans (CLabBeta (TCaseF x₁ VLab x) ins) (≡ᵀ'⊆≡ᵀ eq))
+  ≡ᵀ'⊆≡ᵀ {n} {(Case f (LabI l))} {B} {Γ} (CLabBeta' x ins eq) = CTrans (CLabBeta x ins) (≡ᵀ'⊆≡ᵀ eq)
   ≡ᵀ'⊆≡ᵀ {n} {.(Pi _ _)} {.(Pi _ _)} {Γ} (CPi' j j₁) = CPi (≡ᵀ'⊆≡ᵀ j ) (≡ᵀ'⊆≡ᵀ j₁)
   ≡ᵀ'⊆≡ᵀ {n} {.(Sigma _ _)} {.(Sigma _ _)} {Γ} (CSigma' j j₁) = CSigma (≡ᵀ'⊆≡ᵀ j) (≡ᵀ'⊆≡ᵀ j₁)
   ≡ᵀ'⊆≡ᵀ {n} {.(Case _ _)} {.(Case _ _)} {Γ} (CLab' v x) = CLab v (λ l i → ≡ᵀ'⊆≡ᵀ (x l i))
-  ≡ᵀ'⊆≡ᵀ {n} {Case f (LabI l)} {Case g (LabI .l)} {Γ} (CLabSub'{ins = ins}{ok = ok}{ok'} eq)
-    with (CLabBeta{f = f} (TCaseF ok VLab (TLabI ins)) ins) | (CSym (CLabBeta{f = g} (TCaseF ok' VLab (TLabI ins)) ins))
-  ...  | w | w'  = CTrans (CTrans w (≡ᵀ'⊆≡ᵀ eq)) w' -- CTrans w w'
 
   ≡ᵀ⊆≡ᵀ'-env {n} {.[]} {.[]} tzero = tzero
   ≡ᵀ⊆≡ᵀ'-env {n} {.(⟨ _ , _ ⟩)} {.(⟨ _ , _ ⟩)} (tsuc eq x) = tsuc (≡ᵀ⊆≡ᵀ'-env eq) (≡ᵀ⊆≡ᵀ' x)
@@ -433,7 +409,6 @@ module defs where
   ⊢≡ᵀ-envsub' {n} {.(Pi _ _)} {.(Pi _ _)} {Γ} {Δ} (CPi'{ok = ok} j j₁) eq = CPi'{ok = ⊢-envsub' ok eq} (⊢≡ᵀ-envsub' j eq) (⊢≡ᵀ-envsub' j₁ (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})))
   ⊢≡ᵀ-envsub' {n} {.(Sigma _ _)} {.(Sigma _ _)} {Γ} {Δ} (CSigma'{ok = ok} j j₁) eq = CSigma'{ok = ⊢-envsub' ok eq} (⊢≡ᵀ-envsub' j eq) (⊢≡ᵀ-envsub' j₁ (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})))
   ⊢≡ᵀ-envsub' {n} {.(Case _ _)} {.(Case _ _)} {Γ} {Δ} (CLab'{ok = ok}{ok' = ok'} v x) eq = CLab'{ok = λ l' i → ⊢-envsub' (ok l' i) eq}{ok' = λ l' i → ⊢-envsub' (ok' l' i) eq} (⊢-envsub' v eq) (λ l i → ⊢≡ᵀ-envsub' (x l i) eq)
-  ⊢≡ᵀ-envsub' {n} {.(Case _ (LabI _))} {.(Case _ (LabI _))} {Γ} {Δ} (CLabSub'{ok = ok}{ok' = ok'} j) eq = CLabSub'{ok = λ l' i → ⊢-envsub' (ok l' i) eq}{ok' = λ l' i → ⊢-envsub' (ok' l' i) eq} (⊢≡ᵀ-envsub' j eq)
 
 
   --- COROLLARIES
@@ -457,9 +432,11 @@ module operational where
   data _⇒_ {n : ℕ} : Exp {n} → Exp {n} → Set where
     ξ-App1 : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → App e₁ e₂ ⇒ App e₁' e₂
     ξ-App2 : {e e' v : Exp} → Val v → e ⇒ e' → App v e ⇒ App v e'
+    ξ-Prod1 : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → Prod e₁ e₂ ⇒ Prod e₁' e₂
+    ξ-Prod2 : {e₂ e₂' v : Exp} → Val v → e₂ ⇒ e₂' → Prod v e₂ ⇒ Prod v e₂'
     ξ-Let : {e₁ e₁' e₂ : Exp} → e₁ ⇒ e₁' → Let e₁ e₂ ⇒ Let e₁' e₂
     β-App : {e v : Exp} → Val v → (App (Abs e) v) ⇒ (↑⁻¹[ ([ 0 ↦ ↑¹[ v ] ] e) ])
-    β-Let : {e e' e'' : Exp} → Let (Prod e e') e'' ⇒ ↑ (ℤ.negsuc 1) , 0 [ ([ 0 ↦ ↑ (ℤ.pos 1) , 0 [ e ] ] ([ 0 ↦ ↑ (ℤ.pos 1) , 1 [ e' ] ] e'')) ]
+    β-Let : {e e' e'' : Exp} → Val e → Val e' → Let (Prod e e') e'' ⇒ ↑ (ℤ.negsuc 1) , 0 [ ([ 0 ↦ ↑ (ℤ.pos 1) , 0 [ e ] ] ([ 0 ↦ ↑ (ℤ.pos 1) , 1 [ e' ] ] e'')) ]
     β-LabE : {s : Subset n} {f : ∀ l → l ∈ s → Exp} {x : Fin n} → (ins : x ∈ s) → LabE f (LabI x) ⇒ f x ins
 
   ---- properties & lemmas
@@ -1092,15 +1069,18 @@ module operational where
   ...    | value x₂
          with canonical-forms-pi j x₁
   ...       | fst , snd rewrite snd = step (β-App x₂)
-  progress {n} .(Prod _ _) {.(Sigma _ _)} {TSigmaI j j₁} = value VProd
+  progress {n} .(Prod _ _) {.(Sigma _ _)} {TSigmaI{e = e}{e' = e'} j j₁}
+    with progress e {j = j}
+  ...  | step x = step (ξ-Prod1 x)
+  ...  | value x = {!!}
   progress {n} .(Let _ _) {T} {TSigmaE{e = e} {e' = e'} j j₁}
     with progress e {j = j}
   ...  | step x = step (ξ-Let x)
   ...  | value x
        with canonical-forms-sigma j x
-  ...     | fst , snd , snd₁ rewrite snd₁ = step β-Let
+  ...     | fst , snd , snd₁ rewrite snd₁
+          with x
+  ...        | VProd y y₁ = step (β-Let y y₁)
   progress {n} .(LabI _) {.(Label _)} {TLabI ins} = value VLab
   progress {n} .(LabE _ (LabI _)) {T} {TLabEl{ins = ins} j j₁} = step (β-LabE ins)
   progress {n} (LabE f (Var m)) {T} {TLabEx f' j} = contradiction (free-vars-env-< j m in-Var) λ ()
-
-
