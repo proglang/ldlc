@@ -110,6 +110,15 @@ module defs where
     in-Prod : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc n) ∈` e' → n ∈` Prod e e'
     in-Let : {n : ℕ} {e e' : Exp} → n ∈` e ⊎ (ℕ.suc (ℕ.suc n)) ∈` e' → n ∈` Let e e'
     
+  -- variable in type
+  --    Pi : Ty {n} → Ty {n} → Ty
+  --    Sigma : Ty {n} → Ty {n} → Ty
+    
+  data _∈`ᵀ_ {N : ℕ} : ℕ → Ty {N} → Set where
+    in-Pi : {n : ℕ} {A B : Ty {N}} → n ∈`ᵀ A ⊎ n ∈`ᵀ B → n ∈`ᵀ Pi A B
+    in-Sigma : {n : ℕ} {A B : Ty {N}} → n ∈`ᵀ A ⊎ n ∈`ᵀ B → n ∈`ᵀ Sigma A B
+    in-Case : {n : ℕ} {s : Subset N} {f : ∀ l → l ∈ s → Ty {N}} {e : Exp {N}} → n ∈` e → n ∈`ᵀ Case f e 
+    
   -- Type environment, formation and typing of expressions
   data TEnv {n : ℕ} : Set
   data _∶_∈_ {n : ℕ} : ℕ → Ty {n} → TEnv {n} → Set
@@ -171,15 +180,17 @@ module defs where
     -- since I couldn't prove that it holds without the rule (Γ ⊢ e ∶ T does not imply Γ ⊢ T, see TSigmaE: Let e e' ∶ C because of e')
     TSigmaE : {Γ : TEnv {n}} {A B C : Ty} {e e' : Exp} {ok : Γ ⊢ A} {ok' : ⟨ A , Γ ⟩ {ok} ⊢ B} → Γ ⊢ e ∶ (Sigma A B)
                                                                                                → ⟨ B , ⟨ A , Γ ⟩ {ok} ⟩ {ok'} ⊢ e' ∶ C
-                                                                                               →  Γ ⊢ Let e e' ∶ C
+                                                                                               → ¬ (0 ∈`ᵀ C) × ¬ (1 ∈`ᵀ C)
+                                                                                               → Γ ⊢ Let e e' ∶ C
     TLabI : {Γ : TEnv} {x : Fin n} {s : Subset n} → (ins : x ∈ s) → Γ ⊢ LabI x ∶ Label {n} s
     TLabEl : {Γ : TEnv {n}} {T : Ty} {s : Subset n} {x : Fin n} {ins : x ∈ s} {f : ∀ l → l ∈ s → Exp} {scopecheck : ∀ l i m → m ∈` (f l i) → m <ᴺ length Γ}
                                                                                                     → Γ ⊢ f x ins ∶ T
                                                                                                     → Γ ⊢ LabI {n} x ∶ Label {n} s
                                                                                                     → Γ ⊢ LabE {n} {s} f (LabI {n} x) ∶ T
-    TLabEx : {Γ : TEnv} {T : Ty} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} → (f' : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ T))
-                                                                                → Γ ⊢ Var m ∶ Label {n} s
-                                                                                → Γ ⊢ LabE {n} {s} f (Var m) ∶ T
+    TLabEx : {Γ : TEnv} {T : Ty {n}} {m : ℕ} {s : Subset n} {f : ∀ l → l ∈ s → Exp} {g : ∀ l → l ∈ s → Ty {n}}
+                                                                                  → (u : ∀ l i → (Γ ⊢ [ m ↦ (LabI l) ] (f l i) ∶ (g l i)))
+                                                                                  → Γ ⊢ Var m ∶ Label {n} s
+                                                                                  → Γ ⊢ LabE {n} {s} f (Var m) ∶ Case g (Var m)
 
   -- Type conversion
   data _⊢_≡ᵀ_ {n} where
@@ -248,11 +259,11 @@ module defs where
   ⊢∶-envsub {n} {.(Pi _ _)} {Γ} {Δ} {.(Abs _)} (TPiI{ok = ok}{ok' = ok'} j) eq = TPiI{ok = ⊢-envsub ok eq}{ok' = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j (tsuc eq (CRefl{ok = ⊢-envsub ok eq})))
   ⊢∶-envsub {n} {.([ 0 ↦ _ ]ᵀ _)} {Γ} {Δ} {.(App _ _)} (TPiE j j₁ x) eq = TPiE (⊢∶-envsub j eq) (⊢∶-envsub j₁ eq) (⊢-envsub x eq)
   ⊢∶-envsub {n} {.(Sigma _ _)} {Γ} {Δ} {.(Prod _ _)} (TSigmaI {ok = ok}{ok' = ok'} j j₁) eq = TSigmaI {ok = ⊢-envsub ok eq}{ok' =  ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j eq) (⊢∶-envsub j₁ (tsuc eq (CRefl{ok = ⊢-envsub ok eq})))
-  ⊢∶-envsub {n} {A} {Γ} {Δ} {.(Let _ _)} (TSigmaE {ok = ok} {ok' = ok'} j j₁) eq
-    = TSigmaE{ok = ⊢-envsub ok eq}{ok' = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j eq) (⊢∶-envsub j₁ (tsuc (tsuc eq (CRefl{ok = ⊢-envsub ok eq})) (CRefl{ok = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))})))
+  ⊢∶-envsub {n} {A} {Γ} {Δ} {.(Let _ _)} (TSigmaE {ok = ok} {ok' = ok'} j j₁ nin) eq
+    = TSigmaE{ok = ⊢-envsub ok eq}{ok' = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))} (⊢∶-envsub j eq) (⊢∶-envsub j₁ (tsuc (tsuc eq (CRefl{ok = ⊢-envsub ok eq})) (CRefl{ok = ⊢-envsub ok' (tsuc eq (CRefl{ok = ⊢-envsub ok eq}))}))) nin
   ⊢∶-envsub {n} {.(Label _)} {Γ} {Δ} {.(LabI _)} (TLabI ins) eq = TLabI ins
   ⊢∶-envsub {n} {A} {Γ} {Δ} {.(LabE _ (LabI _))} (TLabEl{scopecheck = scopecheck} j j₁) eq rewrite (≡ᵀ-length eq) = TLabEl{scopecheck = scopecheck} (⊢∶-envsub j eq) (⊢∶-envsub j₁ eq)
-  ⊢∶-envsub {n} {A} {Γ} {Δ} {.(LabE _ (Var _))} (TLabEx f' j) eq = TLabEx (λ l i → ⊢∶-envsub (f' l i) eq) (⊢∶-envsub j eq)
+  ⊢∶-envsub {n} {A} {Γ} {Δ} {.(LabE _ (Var _))} (TLabEx{T = T} f' j) eq = TLabEx{T = T} (λ l i → ⊢∶-envsub (f' l i) eq) (⊢∶-envsub j eq)
 
   ⊢≡ᵀ-envsub {n} {A} {.A} {Γ} {Δ} (CRefl{ok = ok}) eq = CRefl{ok = ⊢-envsub ok eq}
   ⊢≡ᵀ-envsub {n} {A} {B} {Γ} {Δ} (CSym j) eq = CSym (⊢≡ᵀ-envsub j eq)
@@ -399,9 +410,9 @@ module defs where
   ⊢∶-envsub' {n} {.([ 0 ↦ e₁ ]ᵀ _)} {Γ} {Δ} {App e e₁} (TPiE j j₁ x) eq = TPiE (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ eq) (⊢-envsub' x eq)
   ⊢∶-envsub' {n} {.(Label _)} {Γ} {Δ} {LabI x} (TLabI ins) eq = TLabI ins
   ⊢∶-envsub' {n} {A} {Γ} {Δ} {LabE f .(LabI _)} (TLabEl{scopecheck = sc} j j₁) eq rewrite (≡ᵀ'-length eq) = TLabEl{scopecheck = sc} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ eq)
-  ⊢∶-envsub' {n} {A} {Γ} {Δ} {LabE f .(Var _)} (TLabEx f' j) eq = TLabEx (λ l i → ⊢∶-envsub' (f' l i) eq) (⊢∶-envsub' j eq)
+  ⊢∶-envsub' {n} {A} {Γ} {Δ} {LabE f .(Var _)} (TLabEx{T = T} f' j) eq = TLabEx{T = T} (λ l i → ⊢∶-envsub' (f' l i) eq) (⊢∶-envsub' j eq)
   ⊢∶-envsub' {n} {.(Sigma _ _)} {Γ} {Δ} {Prod e e₁} (TSigmaI{ok = ok}{ok' = ok'} j j₁) eq = TSigmaI{ok = ⊢-envsub' ok eq}{ok' = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub ok (≡ᵀ'⊆≡ᵀ-env eq)}))} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})))
-  ⊢∶-envsub' {n} {A} {Γ} {Δ} {Let e e₁} (TSigmaE{ok = ok}{ok' = ok'} j j₁) eq = TSigmaE{ok = ⊢-envsub' ok eq}{ok' = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ (tsuc (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})) (CRefl'{ok = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))})))
+  ⊢∶-envsub' {n} {A} {Γ} {Δ} {Let e e₁} (TSigmaE{ok = ok}{ok' = ok'} j j₁ nin) eq = TSigmaE{ok = ⊢-envsub' ok eq}{ok' = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))} (⊢∶-envsub' j eq) (⊢∶-envsub' j₁ (tsuc (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq})) (CRefl'{ok = ⊢-envsub' ok' (tsuc eq (CRefl'{ok = ⊢-envsub' ok eq}))}))) nin
 
   ⊢≡ᵀ-envsub' {n} {A} {.A} {Γ} {Δ} (CRefl'{ok = ok}) eq = CRefl'{ok = ⊢-envsub' ok eq}
   ⊢≡ᵀ-envsub' {n} {A} {.(Case _ (LabI _))} {Γ} {Δ} (CLabEta' x x₁ j) eq = CLabEta' (⊢∶-envsub' x eq) (λ l ins' → ⊢-envsub' (x₁ l ins') eq) (⊢≡ᵀ-envsub' j eq)
@@ -817,8 +828,8 @@ module operational where
   free-vars-env-< {N} {Prod e e₁} {Γ} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₁ x)) = free-vars-env-< j n x
   free-vars-env-< {N} {Prod e e₁} {Γ} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₂ y)) = ≤-pred (free-vars-env-< j₁ (ℕ.suc n) y)
   free-vars-env-< {N} {Let e e₁} {Γ} {T} (TConv j x₁) n x = free-vars-env-< j n x
-  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TSigmaE j j₁) n (in-Let (inj₁ x)) = free-vars-env-< j n x
-  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TSigmaE j j₁) n (in-Let (inj₂ y)) = ≤-pred (≤-pred (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y))
+  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TSigmaE j j₁ nin) n (in-Let (inj₁ x)) = free-vars-env-< j n x
+  free-vars-env-< {N} {Let e e₁} {Γ} {T} (TSigmaE j j₁ nin) n (in-Let (inj₂ y)) = ≤-pred (≤-pred (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y))
 
   -- closed expressions have no free variables
   closed-free-vars : {N : ℕ} {e : Exp {N}} {T : Ty {N}} → [] ⊢ e ∶ T → (∀ n → ¬ (n ∈` e))
@@ -831,8 +842,8 @@ module operational where
   closed-free-vars {N} {Prod e e₁} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₁ x)) = closed-free-vars j n x
   closed-free-vars {N} {Prod e e₁} {.(Sigma _ _)} (TSigmaI j j₁) n (in-Prod (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc n) y) (≤⇒≯ (s≤s z≤n))
   closed-free-vars {N} {Let e e₁} {T} (TConv j x) n = closed-free-vars j n
-  closed-free-vars {N} {Let e e₁} {T} (TSigmaE j j₁) n (in-Let (inj₁ x)) = closed-free-vars j n x
-  closed-free-vars {N} {Let e e₁} {T} (TSigmaE j j₁) n (in-Let (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y) (≤⇒≯ (s≤s (s≤s z≤n)))
+  closed-free-vars {N} {Let e e₁} {T} (TSigmaE j j₁ nin) n (in-Let (inj₁ x)) = closed-free-vars j n x
+  closed-free-vars {N} {Let e e₁} {T} (TSigmaE j j₁ nin) n (in-Let (inj₂ y)) = contradiction (free-vars-env-< j₁ (ℕ.suc (ℕ.suc n)) y) (≤⇒≯ (s≤s (s≤s z≤n)))
   closed-free-vars {N} {e} {T} j n x = contradiction (free-vars-env-< j n x) (≤⇒≯ z≤n)  -- App & LabE have the same proof
 
   -- shifting with a threshold above number of free variables has no effect
@@ -1073,7 +1084,7 @@ module operational where
     with progress e {j = j}
   ...  | step x = step (ξ-Prod1 x)
   ...  | value x = {!!}
-  progress {n} .(Let _ _) {T} {TSigmaE{e = e} {e' = e'} j j₁}
+  progress {n} .(Let _ _) {T} {TSigmaE{e = e} {e' = e'} j j₁ nin}
     with progress e {j = j}
   ...  | step x = step (ξ-Let x)
   ...  | value x
