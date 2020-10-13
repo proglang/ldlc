@@ -1,5 +1,5 @@
 # ldlc
-label dependent lambda calculus
+label dependent lambda calculus, definitions based on an unpublished manuscript
 
 contains:
 * Curry-style simply typed lambda calculus
