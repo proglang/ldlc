@@ -1,10 +1,12 @@
-module LDLC where
+-- labeled λ-calculus
+
+module IntrinsicallyTypedLLC where
 
 open import Data.List
-open import Data.List.All
+open import Data.List.Relation.Unary.All
 open import Data.List.Base
-open import Data.Vec hiding (_∈_) renaming (_++_ to _+++_)
-open import Data.Unit hiding (_≤_ ; poset)
+open import Data.Vec hiding (_++_)
+open import Data.Unit hiding (_≤_)
 open import Data.Nat hiding (_≤_)
 open import Data.Fin.Subset
 open import Data.Fin.Subset.Properties
@@ -13,119 +15,89 @@ open import Data.Product
 open import Data.Empty
 open import Relation.Binary
 
--- Types: nl ~ (max.) number of labels
-data LTy (nl : ℕ) : Set where
-  Tunit : LTy nl
-  Tlabel : Subset nl → LTy nl
-  Tfun : LTy nl → LTy nl → LTy nl
+-- definitions
 
--- Subtyping relation
-data _≤_ {nl} : LTy nl → LTy nl → Set where
+data Ty (nl : ℕ) : Set where   -- nl ~ (max.) number of labels
+  Tunit : Ty nl
+  Tlabel : Subset nl → Ty nl
+  Tfun : Ty nl → Ty nl → Ty nl
+
+TEnv : ℕ → Set
+TEnv nl = List (Ty nl)
+
+data _≤_ {nl} : Ty nl → Ty nl → Set where
   Sunit  : Tunit ≤ Tunit
   Slabel : ∀ {snl snl'} → snl ⊆ snl' → (Tlabel snl) ≤ (Tlabel snl')
   Sfun   : ∀ {A A' B B'} → A' ≤ A → B ≤ B' → (Tfun A B) ≤ (Tfun A' B')
 
------ Properties
--- Transitivity, reflexivity of ⊆ (the one in Data.Fin.Subset.Properties ?)
-⊆-trans : ∀ {nl} {snl snl' snl'' : Subset nl} → snl ⊆ snl' → snl' ⊆ snl'' → snl ⊆ snl''
-⊆-trans snl⊆snl' snl'⊆snl'' = λ x → snl'⊆snl'' (snl⊆snl' x)
--- snl⊆snl'   = ∀ {x} → x ∈ snl → x ∈ snl'
--- snl'⊆snl'' = ∀ {x} → x ∈ snl' → x ∈ snl''
+data _∈`_ {nl : ℕ} : Ty nl → TEnv nl → Set where
+  here  : ∀ {lt φ} → lt ∈` (lt ∷ φ)
+  there : ∀ {lt lt' φ} → lt ∈` φ → lt ∈` (lt' ∷ φ)
 
-⊆-refl : ∀ {nl} → (snl : Subset nl) → snl ⊆ snl
-⊆-refl snl = λ x → x
+data Exp {nl : ℕ} : TEnv nl → Ty nl → Set where
+  Unit     : ∀ {φ} → Exp φ Tunit
+  Var      : ∀ {φ t} → (x : t ∈` φ) → Exp φ t   -- t ∈` φ gives us the position of "x" in env
+  SubType  : ∀ {A A' φ} →  Exp φ A → A ≤ A'
+                        →  Exp φ A'
+  Lab-I    : ∀ {l snl φ} → l ∈ snl → Exp φ (Tlabel snl)
+  Lab-E    : ∀ {snl φ B} → Exp φ (Tlabel snl)
+                         → (∀ l → l ∈ snl → Exp φ B) 
+                         → Exp φ B
+  Abs     : ∀ {B A φ} → Exp (A ∷ φ) B
+                      → Exp φ (Tfun A B)
+  App     : ∀ {A B φ} → Exp φ (Tfun A B)
+                      → (ex : Exp φ A)
+                      → Exp φ B
 
--- Transitivity, reflexivity of ≤
-≤-trans : ∀ {nl} {t t' t'' : LTy nl} → t ≤ t' → t' ≤ t'' → t ≤ t''
+-- subtyping properties
+
+≤-trans : ∀ {nl} {t t' t'' : Ty nl} → t ≤ t' → t' ≤ t'' → t ≤ t''
 ≤-trans Sunit Sunit = Sunit 
 ≤-trans (Slabel snl⊆snl') (Slabel snl'⊆snl'') = Slabel (⊆-trans snl⊆snl' snl'⊆snl'')
 ≤-trans (Sfun a'≤a b≤b') (Sfun a''≤a' b'≤b'') = Sfun (≤-trans a''≤a' a'≤a) (≤-trans b≤b' b'≤b'')
 
-≤-refl : ∀ {nl} → (t : LTy nl) → t ≤ t
+≤-refl : ∀ {nl} → (t : Ty nl) → t ≤ t
 ≤-refl Tunit = Sunit
-≤-refl (Tlabel x) = Slabel (⊆-refl x)
+≤-refl (Tlabel x) = Slabel (⊆-refl)
 ≤-refl (Tfun t t') = Sfun (≤-refl t) (≤-refl t')
------
+  
+-- big-step semantics
 
--- Environment: List of types, each having a defined number of labels
-LTEnv : ℕ → Set
-LTEnv nl = List (LTy nl)
-
--- Lookup in environment
-data _∈`_ {nl : ℕ} : LTy nl → LTEnv nl → Set where
-  here  : ∀ {lt φ} → lt ∈` (lt ∷ φ)
-  there : ∀ {lt lt' φ} → lt ∈` φ → lt ∈` (lt' ∷ φ)
-
-
--- Expressions: Variables, Subtypes, Label Introduction & Elimination, Abstraction,
---              Application
-data LExpr {nl : ℕ} : LTEnv nl → LTy nl → Set where
-  Unit     : ∀ {φ} → LExpr φ Tunit
-  Var      : ∀ {φ t} → (x : t ∈` φ) → LExpr φ t   -- t ∈` φ gives us the position of "x" in env
-  SubType  : ∀ {A A' φ} →  LExpr φ A → A ≤ A'
-                        →  LExpr φ A'
-  Lab-I    : ∀ {l snl φ} → l ∈ snl → LExpr φ (Tlabel snl)
-  Lab-E    : ∀ {snl φ B} → LExpr φ (Tlabel snl)
-                         → (∀ l → l ∈ snl → LExpr φ B) 
-                         → LExpr φ B
-  Abs     : ∀ {B A φ} → LExpr (A ∷ φ) B
-                      → LExpr φ (Tfun A B)
-  App     : ∀ {A B φ} → LExpr φ (Tfun A B)
-                      → (ex : LExpr φ A)
-                      → LExpr φ B
-
------ BIG STEP SEMANTICS -----
--- Values
-Val : ∀ {nl} → LTy nl → Set
+Val : ∀ {nl} → Ty nl → Set
 Val Tunit = Data.Unit.⊤
 Val {nl} (Tlabel snl) = Σ (Fin nl) (λ l → l ∈ snl)
 Val (Tfun ty ty₁) = (Val ty) → (Val ty₁)
 
--- Coerce: Supertype of a Value is also a Value
-coerce : ∀ {nl} {t t' : LTy nl} → t ≤ t' → Val t → Val t'
--- t is Val Unit
+coerce : ∀ {nl} {t t' : Ty nl} → t ≤ t' → Val t → Val t' -- supertype of a Value is also a Value
 coerce Sunit t = tt
--- Since snl⊆snl' = ∀ x → x ∈ snl → x ∈ snl'
 coerce (Slabel snl⊆snl') (Finnl , Finnl∈snl) = (Finnl , (snl⊆snl' Finnl∈snl))
--- t, t' functions, induction on t then using inductive hypothesis and application of t'
 coerce (Sfun A'≤A B≤B') f = λ x → coerce B≤B' (f (coerce A'≤A x))
 
--- Lookup in environment of values;
--- All Val φ ~ All elements in φ satisfy Value predicate (are a value)
-access : ∀ {nl} {t : LTy nl} {φ} → t ∈` φ → All Val φ → Val t
+access : ∀ {nl} {t : Ty nl} {φ} → t ∈` φ → All Val φ → Val t
 access here (px ∷ ρ) = px
 access (there x) (px ∷ ρ) = access x ρ
 
--- Evaluation of Expressions
-eval : ∀ {nl φ t} → LExpr {nl} φ t → All Val φ → Val t
+eval : ∀ {nl φ t} → Exp {nl} φ t → All Val φ → Val t
 eval Unit ϱ = tt
 eval (Var x) ϱ = access x ϱ
 eval (SubType e a≤a') ϱ = coerce a≤a' (eval e ϱ)
 eval (Lab-I {l} l∈snl) ϱ = l , (l∈snl)
--- Apply case function to evaluated expression
 eval (Lab-E e case) ϱ with eval e ϱ
 ... | lab , lab∈nl = eval (case lab lab∈nl) ϱ
 eval (Abs e) ϱ = λ x → eval e (x ∷ ϱ)
 eval (App e e₁) ϱ = (eval e ϱ) (eval e₁ ϱ)
 
 
------ SMALL STEP SEMANTICS -----
------ The following rules roughly correspond to these introduced in -----
------ PLFA (Programming Language Foundations in Agda)               -----
+-- small-step semantics
+-- substitution taken from PLFA
 
------ Property required for renaming: Given a correspondence between variables from two environments,
------                                 extending both similiarly is possible without loss of
------                                 correspondence
-ext : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → A ∈` ψ)
+ext : ∀ {nl φ ψ} → (∀ {A : Ty nl} → A ∈` φ → A ∈` ψ)
                  → (∀ {A B} → A ∈` (B ∷ φ) → A ∈` (B ∷ ψ))
 ext ϱ here      = here
 ext ϱ (there x) = there (ϱ x)
 
----- Renaming: Correspondence between variables from two environments yields in a correspondence
-----           between expressions in these environments
----- E.g. λx. x ~ λy. y
-rename : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → A ∈` ψ)
-                    → (∀ {A} → LExpr φ A → LExpr ψ A)
+rename : ∀ {nl φ ψ} → (∀ {A : Ty nl} → A ∈` φ → A ∈` ψ)
+                    → (∀ {A} → Exp φ A → Exp ψ A)
 rename ϱ Unit                    = Unit
 rename ϱ (Var x)                 = Var (ϱ x)
 rename ϱ (SubType expr:A' A'≤A)  = SubType (rename ϱ expr:A') A'≤A
@@ -135,17 +107,13 @@ rename ϱ (Lab-E expr:snl case)   = Lab-E (rename ϱ expr:snl)
 rename ϱ (Abs expr:B)            = Abs (rename (ext ϱ) expr:B)
 rename ϱ (App expr:A->B expr:A)  = App (rename ϱ expr:A->B) (rename ϱ expr:A)
 
------ Property required for simultaneous substitution: Given a map from variables in one env.
------                                                  to terms in another, extending both similiarly
------                                                  is allowed
-exts : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → LExpr ψ A)
-                  → (∀ {A B} → A ∈` (B ∷ φ) → LExpr (B ∷ ψ) A)
+exts : ∀ {nl φ ψ} → (∀ {A : Ty nl} → A ∈` φ → Exp ψ A)
+                  → (∀ {A B} → A ∈` (B ∷ φ) → Exp (B ∷ ψ) A)
 exts ϱ here      = Var (here)
 exts ϱ (there x) = rename there (ϱ x)
 
------ Simultaneous substitution -----
-subst : ∀ {nl φ ψ} → (∀ {A : LTy nl} → A ∈` φ → LExpr ψ A)
-                   → (∀ {A : LTy nl} → LExpr φ A → LExpr ψ A)
+subst : ∀ {nl φ ψ} → (∀ {A : Ty nl} → A ∈` φ → Exp ψ A) -- simult. substitution
+                   → (∀ {A : Ty nl} → Exp φ A → Exp ψ A)
 subst ϱ Unit                       = Unit
 subst ϱ (Var x)                    = ϱ x
 subst ϱ (SubType expr:A' A'≤A)     = SubType (subst ϱ expr:A') A'≤A
@@ -155,42 +123,30 @@ subst ϱ (Lab-E expr:snl case)      = Lab-E (subst ϱ expr:snl)
 subst ϱ (Abs expr:B)               = Abs (subst (exts ϱ) expr:B)
 subst ϱ (App expr:A→B expr:A)     = App (subst ϱ expr:A→B) (subst ϱ expr:A)
 
------ Single substitution, using simultaneous substitution
------ Given an expression in environment (φ.B) with type A, we replace
------ the variable of type B with an expression in environment φ by using
------ the map ϱ which maps last variable in environment to the expr. of type B
------ and every other free variable to itself for substitution
-_[[_]] : ∀ {nl φ} {A B : LTy nl} → LExpr (B ∷ φ) A → LExpr φ B → LExpr φ A
+_[[_]] : ∀ {nl φ} {A B : Ty nl} → Exp (B ∷ φ) A → Exp φ B → Exp φ A -- single substitution
 _[[_]] {nl} {φ} {A} {B} N M = subst {nl} {B ∷ φ} {φ} ϱ {A} N
   where
-  ϱ : ∀ {A} → A ∈` (B ∷ φ) → LExpr φ A
+  ϱ : ∀ {A} → A ∈` (B ∷ φ) → Exp φ A
   ϱ here      = M
   ϱ (there x) = Var x 
 
--- Type substitution
-
--- Lemmas for '++' operator (actually not required, can work with def. of ++)
--- if lt ∈` φ' then also lt ∈` (φ' ++ φ)
-expansionlemma : ∀ {nl} {lt : LTy nl} {φ φ'} → lt ∈` φ' → lt ∈` (φ' ++ φ)
+expansionlemma : ∀ {nl} {lt : Ty nl} {φ φ'} → lt ∈` φ' → lt ∈` (φ' ++ φ)
 expansionlemma here      = here
 expansionlemma (there x) = there (expansionlemma x)
 
--- if lt ∈` φ then also lt ∈` (φ' ++ φ)
-extensionlemma : ∀ {nl} {lt : LTy nl} {φ φ'} → lt ∈` φ → lt ∈` (φ' ++ φ)
+extensionlemma : ∀ {nl} {lt : Ty nl} {φ φ'} → lt ∈` φ → lt ∈` (φ' ++ φ)
 extensionlemma {φ' = []}        here     = here
 extensionlemma {φ' = x ∷ xs}   here     = there (extensionlemma{φ' = xs} here)
 extensionlemma {φ' = []}       (there y) = there y
 extensionlemma {φ' = x ∷ xs}  (there y) = there (extensionlemma {φ' = xs} (there y))
 
--- Extension lemma inside a list for De Bruijn indices
-inextdebr : ∀ {nl} {B A : LTy nl} {φ' φ} → B ∈` (φ' ++ φ) → B ∈` (φ' ++ (A ∷ φ))
+inextdebr : ∀ {nl} {B A : Ty nl} {φ' φ} → B ∈` (φ' ++ φ) → B ∈` (φ' ++ (A ∷ φ))
 inextdebr {φ' = []} here           = there here
 inextdebr {φ' = []} (there x)      = there (there x)
 inextdebr {φ' = x ∷ xs} here      = here
 inextdebr {φ' = x ∷ xs} (there y) = there (inextdebr{φ' = xs} y)
 
--- Extension lemma inside a list for expressions
-inext : ∀ {nl} {φ φ'} {A B : LTy nl} → LExpr (φ' ++ φ) B → LExpr (φ' ++ (A ∷ φ)) B
+inext : ∀ {nl} {φ φ'} {A B : Ty nl} → Exp (φ' ++ φ) B → Exp (φ' ++ (A ∷ φ)) B
 inext Unit                                 = Unit
 inext {φ' = φ'} (Var x)                    = Var (inextdebr{φ' = φ'} x)
 inext {φ = φ}{φ' = φ'} (SubType expr b≤b') = SubType (inext{φ = φ}{φ' = φ'} expr) b≤b'
@@ -199,19 +155,13 @@ inext {φ = φ} {φ' = φ'} (Lab-E x x₁)       = Lab-E (inext{φ = φ}{φ' = �
 inext {nl} {φ} {φ'} (Abs{A = A°} x)        = Abs (inext{φ = φ}{φ' = A° ∷ φ'} x)
 inext {φ = φ} {φ' = φ'} (App x x₁)         = App (inext{φ = φ}{φ' = φ'} x) (inext{φ = φ}{φ' = φ'} x₁)
 
-{- Direct substitution of _∈`_ not possible:
-lolz : ∀ {nl} {B A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ∈` (φ' ++ (A' ∷ φ))
-lolz {φ' = []}  here a'≤a          = :(  -- SubTyping required
--}
--- Type substitution for De Bruijn indices
-debrsub : ∀ {nl} {B B' A A' : LTy nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
+debrsub : ∀ {nl} {B B' A A' : Ty nl} {φ' φ} → B ∈` (φ' ++ (A ∷ φ)) → A' ≤ A → B ≤ B' → Exp (φ' ++ (A' ∷ φ)) B'
 debrsub {φ' = []}  here a'≤a b≤b'          = SubType (Var here) (≤-trans a'≤a b≤b')
 debrsub {φ' = []} (there x) a'≤a b≤b'      = SubType (Var (there x)) b≤b'
 debrsub {φ' = x ∷ xs} here a'≤a b≤b'      = SubType (Var (here)) b≤b'
 debrsub {φ' = x ∷ xs} (there z) a'≤a b≤b' = inext{φ' = []}{A = x} (debrsub{φ' = xs} z a'≤a b≤b')
 
--- Type substitution required for Abs SubTypes
-typesub : ∀ {nl φ φ' A B A' B'} → LExpr{nl} (φ' ++ (A ∷ φ)) B → A' ≤ A → B ≤ B' → LExpr (φ' ++ (A' ∷ φ)) B'
+typesub : ∀ {nl φ φ' A B A' B'} → Exp{nl} (φ' ++ (A ∷ φ)) B → A' ≤ A → B ≤ B' → Exp (φ' ++ (A' ∷ φ)) B'  -- subtyping "substitution"
 typesub Unit a'≤a Sunit = Unit
 typesub {φ = φ} {φ'} {A} {B} {A'} {B'} (Var x) a'≤a b≤b'                        = debrsub{φ' = φ'}{φ = φ} x a'≤a b≤b'
 typesub {nl} {φ} {φ'} (SubType expr x) a'≤a b≤b'                                = typesub{nl}{φ}{φ'} expr a'≤a (≤-trans x b≤b')
@@ -221,21 +171,20 @@ typesub {φ' = φ'}{A = A}{B = A°→B°}{A' = A'}{B' = A°°→B°°} (Abs{A = 
                                                                                 = SubType (Abs (typesub{φ' = A° ∷ φ'} expr a'≤a B°≤B°°)) (Sfun A°°≤A° (≤-refl B°°))
 typesub {nl}{φ}{φ'}{A}{B}{A'}{B'} (App{A = A°}{B = .B} expr expr') a'≤a b≤b'    = SubType (App (typesub{nl}{φ}{φ'} expr a'≤a (≤-refl (Tfun A° B))) (typesub{nl}{φ}{φ'} expr' a'≤a (≤-refl A°))) b≤b'
 
-
--- We force values to have type SubType, since Lab-I results in expressions with type {l}
+-- we force values to have type SubType, since Lab-I results in expressions with type {l}
 -- and we want to keep the information about which subset l is in
-data Val' {n φ} : (t : LTy n) → LExpr {n} φ t → Set where
+data Val' {n φ} : (t : Ty n) → Exp {n} φ t → Set where
   Vunit :  Val' (Tunit) Unit
   Vlab : ∀ {l snl l∈snl} → Val' (Tlabel snl) (Lab-I{l = l}{snl} l∈snl)
   Vfun : ∀ {A B exp} → Val' (Tfun A B) (Abs exp)
 
-data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set where
+data _~>_ {n φ} : {A : Ty n} → Exp {n} φ A → Exp {n} φ A → Set where  -- small-steps semantics relation (call-by-value)
 
-  ξ-App1 : ∀ {A B} {L L' : (LExpr φ (Tfun B A))} {M}
+  ξ-App1 : ∀ {A B} {L L' : (Exp φ (Tfun B A))} {M}
            → L ~> L'
            → App L M ~> App L' M
   
-  ξ-App2 : ∀ {A B} {M M' : LExpr φ A} {L : LExpr φ (Tfun A B)}
+  ξ-App2 : ∀ {A B} {M M' : Exp φ A} {L : Exp φ (Tfun A B)}
            → Val' (Tfun A B) L
            → M ~> M'
            → App L M ~> App L M'
@@ -246,11 +195,11 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
              ~>
              (exp [[ M ]])
 
-  ξ-SubType : ∀ {A A' A≤A' } {L L' : LExpr φ A}
+  ξ-SubType : ∀ {A A' A≤A' } {L L' : Exp φ A}
               → L ~> L'
               → SubType{A = A}{A'} L A≤A' ~> SubType{A = A} L' A≤A'
 
-  ξ-Lab-E : ∀ {A snl} {L L' : LExpr φ (Tlabel snl)} {cases}
+  ξ-Lab-E : ∀ {A snl} {L L' : Exp φ (Tlabel snl)} {cases}
             → L ~> L'
             → Lab-E{B = A} L cases ~> Lab-E L' cases
 
@@ -264,7 +213,6 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                ~>
                Lab-I (snl⊆snl' l∈snl)
 
-  -- (Abs exp) : A → B <: A' → B' ~> Abs exp : A' → B'
   γ-Abs : ∀ {A B A' B' e} {A'≤A : A' ≤ A} {B≤B' : B ≤ B'}
           → SubType (Abs{B = B}{A = A} e) (Sfun A'≤A B≤B')
              ~>
@@ -275,39 +223,37 @@ data _~>_ {n φ} : {A : LTy n} → LExpr {n} φ A → LExpr {n} φ A → Set whe
                  ~>
                  SubType expr (≤-trans A≤A' A'≤A'')
 
-  -- Either we define Unit values to be SubTypes of Unit≤Unit; or we introducte the following rule
+  -- either we define Unit values to be SubTypes of Unit≤Unit; or we introducte the following rule
   β-SubType-Unit : SubType Unit Sunit
                    ~>
                    Unit
 
------ Properties of small-step evaluation -----
------ Reflexive & transitive closure, required for generation of evaluation sequences
-infix 2 _~>>_
+-- properties of small-step evaluation
+infix 2 _~>>_ -- refl. transitive closure
 infix 1 begin_
 infixr 2 _~>⟨_⟩_
 infix 3 _∎
 
-data _~>>_ : ∀ {n} {φ} {A : LTy n} → LExpr φ A → LExpr φ A → Set where
-  _∎ : ∀ {n φ} {A : LTy n} (L : LExpr φ A)
+data _~>>_ : ∀ {n} {φ} {A : Ty n} → Exp φ A → Exp φ A → Set where
+  _∎ : ∀ {n φ} {A : Ty n} (L : Exp φ A)
        → L ~>> L
 
-  _~>⟨_⟩_ : ∀ {n φ} {A : LTy n} (L : LExpr φ A) {M N : LExpr φ A}
+  _~>⟨_⟩_ : ∀ {n φ} {A : Ty n} (L : Exp φ A) {M N : Exp φ A}
            → L ~> M
            → M ~>> N
            → L ~>> N
 
-begin_ : ∀ {n φ} {A : LTy n} {M N : LExpr φ A} → M ~>> N → M ~>> N
+begin_ : ∀ {n φ} {A : Ty n} {M N : Exp φ A} → M ~>> N → M ~>> N
 begin M~>>N = M~>>N
 
 
------ Progress Theorem
------ Definiton: ∀ M ∈ (LExpr [] A) : (∃N : M ~> N) ∨ (Val'(M))
-data Progress {n A} (M : LExpr{n} [] A) : Set where
-  step : ∀ {N : LExpr [] A} → M ~> N → Progress M
+-- progress theorem
+data Progress {n A} (M : Exp{n} [] A) : Set where
+  step : ∀ {N : Exp [] A} → M ~> N → Progress M
   done : Val' A M → Progress M
 
--- Proof
-progress : ∀ {n A} → (M : LExpr{n} [] A) → Progress M
+-- proof
+progress : ∀ {n A} → (M : Exp{n} [] A) → Progress M
 progress Unit                                                                             = done Vunit
 progress (Var ())                                                         -- Var requires a proof for A ∈ [] which cannot exist
 progress (SubType Unit Sunit)                                                             = step β-SubType-Unit
@@ -336,23 +282,23 @@ progress (App L M) with progress L
 ...                                              | step M~>M'                             = step (ξ-App2 Vfun M~>M')
 ...                                              | done x                                 = step (β-App x)
 
------ GENERATION OF EVALUATION SEQUENCES -----
------ Idea and implementation from PLFA
+-- generation of evaluation sequences
+-- taken from plfa
 
 data Gas : Set where
   gas : ℕ → Gas
 
-data Finished {n φ A} (N : LExpr{n} φ A) : Set where
+data Finished {n φ A} (N : Exp{n} φ A) : Set where
   done : Val' A N → Finished N
   out-of-gas : Finished N
 
-data Steps : ∀ {n A} → LExpr{n} [] A → Set where
-  steps : ∀ {n A} {L N : LExpr{n} [] A}
+data Steps : ∀ {n A} → Exp{n} [] A → Set where
+  steps : ∀ {n A} {L N : Exp{n} [] A}
           → L ~>> N
           → Finished N
           → Steps L
 
-eval' : ∀ {n A} → Gas → (L : LExpr{n} [] A) → Steps L
+eval' : ∀ {n A} → Gas → (L : Exp{n} [] A) → Steps L
 eval' (gas zero) L              = steps (L ∎) out-of-gas
 eval' (gas (suc m)) L with progress L
 ...      | done VL              = steps (L ∎) (done VL)
@@ -360,9 +306,9 @@ eval' (gas (suc m)) L with progress L
 ...         | steps M~>>N fin   = steps (L ~>⟨ L~>M ⟩ M~>>N) fin 
 
 
--- Examples
+-- examples
 -- (λ (x : Unit) → x) (Unit)
-ex0 : LExpr{suc zero} [] Tunit
+ex0 : Exp{suc zero} [] Tunit
 ex0 = App (Abs (Unit{φ = (Tunit ∷ [])})) (Unit)
 
 _ : ex0 ~>> Unit
@@ -374,7 +320,7 @@ _ =
   ∎
 
 
-ex1 : LExpr{suc zero} [] Tunit
+ex1 : Exp{suc zero} [] Tunit
 ex1 = Lab-E (Lab-I (x∈⁅x⁆ zero)) λ l x → Unit
 
 _ : ex1 ~>> Unit
@@ -385,7 +331,7 @@ _ =
     Unit
   ∎
 
-ex2 : LExpr{suc zero} [] Tunit
+ex2 : Exp{suc zero} [] Tunit
 ex2 = App (SubType (Abs Unit) (Sfun Sunit Sunit)) Unit
 
 -- proof that {inside, outside} ⊆ {inside, inside}
@@ -400,7 +346,7 @@ l∈snl : (zero) ∈ (inside ∷ outside ∷ [])
 l∈snl = here
 
 -- [({0, 1}→{0, 1} <: {0}→{0, 1}) (λ x : {0, 1} . x)] 0
-ex3 : LExpr{suc (suc zero)} [] (Tlabel (inside ∷ inside ∷ []))
+ex3 : Exp{suc (suc zero)} [] (Tlabel (inside ∷ inside ∷ []))
 ex3 = App (SubType (Abs{A = Tlabel (inside ∷ inside ∷ [])}  (Var here)) (Sfun (Slabel{snl = (inside ∷ outside ∷ [])} x⊆y) (≤-refl (Tlabel (inside ∷ inside ∷ [])))))
           (Lab-I l∈snl)
 

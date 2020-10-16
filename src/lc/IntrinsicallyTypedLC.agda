@@ -1,11 +1,13 @@
-module Lam where
+-- intrinsically-typed λ-calculus
 
--- simply typed terminating lambda calculus interpreter
+module IntrinsicallyTypedLC where
 
 open import Data.List
-open import Data.List.All
+open import Data.List.Relation.Unary.All
 open import Data.Unit
 open import Data.Nat
+
+-- definitions
 
 data Ty : Set where
   Tunit : Ty
@@ -21,6 +23,8 @@ data Exp : TEnv → Ty → Set where
   Var : ∀ {Φ t} → (x : t ∈ Φ) → Exp Φ t
   Abs : ∀ {Φ t t'} → Exp (t ∷ Φ) t' → Exp Φ (Tfun t t')
   App : ∀ {Φ t t'} → Exp Φ (Tfun t t') → Exp Φ t → Exp Φ t'
+
+-- big-step semantics
 
 Val : Ty → Set
 Val Tunit = ⊤
